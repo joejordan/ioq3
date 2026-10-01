@@ -42,6 +42,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <time.h>
 #include <sys/resource.h>
 #include <spawn.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 qboolean stdinIsATTY;
 
@@ -766,6 +769,37 @@ char *Sys_Cwd( void )
 	cwd[MAX_OSPATH-1] = 0;
 
 	return cwd;
+}
+
+/*
+==================
+Sys_ExecutablePath
+
+The running executable's full path, which argv[0] isn't when the program
+was started from the PATH; qfalse where the system can't say
+==================
+*/
+qboolean Sys_ExecutablePath( char *path, int size )
+{
+#if defined( __APPLE__ )
+	char raw[ PATH_MAX ], resolved[ PATH_MAX ];
+	uint32_t length = sizeof( raw );
+
+	if( _NSGetExecutablePath( raw, &length ) != 0 || !realpath( raw, resolved ) || strlen( resolved ) >= (size_t)size )
+		return qfalse;
+	Q_strncpyz( path, resolved, size );
+	return qtrue;
+#elif defined( __linux__ ) && !defined( __EMSCRIPTEN__ )
+	ssize_t length = readlink( "/proc/self/exe", path, size - 1 );
+
+	// a path that fills the buffer may have been cut short
+	if( length <= 0 || length >= size - 1 )
+		return qfalse;
+	path[ length ] = '\0';
+	return qtrue;
+#else
+	return qfalse;
+#endif
 }
 
 /*
