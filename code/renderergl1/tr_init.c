@@ -129,6 +129,7 @@ cvar_t	*r_textureMode;
 cvar_t	*r_offsetFactor;
 cvar_t	*r_offsetUnits;
 cvar_t	*r_gamma;
+cvar_t	*r_viewScale;
 cvar_t	*r_intensity;
 cvar_t	*r_lockpvs;
 cvar_t	*r_noportals;
@@ -1159,6 +1160,10 @@ void R_Register( void )
 	r_swapInterval = ri.Cvar_Get( "r_swapInterval", "0",
 					CVAR_ARCHIVE | CVAR_LATCH );
 	r_gamma = ri.Cvar_Get( "r_gamma", "1", CVAR_ARCHIVE );
+	r_viewScale = ri.Cvar_Get( "r_viewScale", "1", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_viewScale, 0.25f, 2, qfalse );
+	ri.Cvar_SetDescription( r_viewScale, "Resolution of the 3D view, as a fraction of its size in pixels: "
+		"below 1 is faster and softer, above 1 smooths edges; the HUD and menus stay sharp" );
 	r_facePlaneCull = ri.Cvar_Get ("r_facePlaneCull", "1", CVAR_ARCHIVE );
 
 	r_railWidth = ri.Cvar_Get( "r_railWidth", "16", CVAR_ARCHIVE );

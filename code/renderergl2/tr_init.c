@@ -196,6 +196,7 @@ cvar_t	*r_textureMode;
 cvar_t	*r_offsetFactor;
 cvar_t	*r_offsetUnits;
 cvar_t	*r_gamma;
+cvar_t	*r_viewScale;
 cvar_t	*r_intensity;
 cvar_t	*r_lockpvs;
 cvar_t	*r_noportals;
@@ -1448,6 +1449,10 @@ void R_Register( void )
 					CVAR_ARCHIVE | CVAR_LATCH );
 #endif
 	r_gamma = ri.Cvar_Get( "r_gamma", "1", CVAR_ARCHIVE );
+	r_viewScale = ri.Cvar_Get( "r_viewScale", "1", CVAR_ARCHIVE );
+	ri.Cvar_CheckRange( r_viewScale, 0.25f, 2, qfalse );
+	ri.Cvar_SetDescription( r_viewScale, "Resolution of the 3D view, as a fraction of its size in pixels: "
+		"below 1 is faster and softer, above 1 smooths edges; the HUD and menus stay sharp" );
 	r_facePlaneCull = ri.Cvar_Get ("r_facePlaneCull", "1", CVAR_ARCHIVE );
 
 	r_railWidth = ri.Cvar_Get( "r_railWidth", "16", CVAR_ARCHIVE );
@@ -1628,6 +1633,8 @@ void R_Init( void ) {
 	if (glRefConfig.framebufferObject)
 		FBO_Init();
 
+	R_UpdateViewScale();
+
 	GLSL_InitGPUShaders();
 
 	R_InitVaos();
@@ -1654,6 +1661,54 @@ void R_Init( void ) {
 
 /*
 =============
+R_UpdateViewScale
+
+Sizes what world views draw into for r_viewScale and the window's size.
+At a scale that leaves the window's size, they draw into the render FBO.
+At any other, into the view FBO at the scaled size, which RB_PostProcess
+scales into the render FBO; the screen-space images they use follow.
+The images and framebuffers get new storage in place.
+=============
+*/
+void R_UpdateViewScale( void ) {
+	static qboolean noted;
+	int maxSide;
+
+	r_viewScale->modified = qfalse;
+	tr.sceneWidth = glConfig.vidWidth;
+	tr.sceneHeight = glConfig.vidHeight;
+	tr.viewScaled = qfalse;
+
+	if ( !glRefConfig.framebufferObject ) {
+		if ( r_viewScale->value != 1.0f && !noted ) {
+			ri.Printf( PRINT_ALL, "r_viewScale needs framebuffers; the 3D view stays at 1\n" );
+			noted = qtrue;
+		}
+		return;
+	}
+
+	maxSide = MIN( glConfig.maxTextureSize, glRefConfig.maxRenderbufferSize );
+	tr.sceneWidth = R_ScaleViewSide( glConfig.vidWidth, r_viewScale->value, maxSide );
+	tr.sceneHeight = R_ScaleViewSide( glConfig.vidHeight, r_viewScale->value, maxSide );
+	tr.viewScaled = tr.sceneWidth != glConfig.vidWidth || tr.sceneHeight != glConfig.vidHeight;
+
+	// nothing to do if the images already have these sizes, as at a start
+	// at 1 or a scale that rounds to the same; the screen-space images
+	// follow the view images' size, or the render images' at 1
+	if ( tr.renderDepthImage->width == glConfig.vidWidth && tr.renderDepthImage->height == glConfig.vidHeight &&
+		tr.viewDepthImage->width == ( tr.viewScaled ? tr.sceneWidth : 1 ) &&
+		tr.viewDepthImage->height == ( tr.viewScaled ? tr.sceneHeight : 1 ) ) {
+		return;
+	}
+
+	// finish what was queued at the old size
+	R_IssuePendingRenderCommands();
+	R_ResizeScreenImages();
+	FBO_Resize();
+}
+
+/*
+=============
 RE_ResizeWindow
 
 Follows a change in the window's size: the images and framebuffers that
@@ -1668,8 +1723,7 @@ static qboolean RE_ResizeWindow( glconfig_t *config ) {
 		return qfalse;
 	}
 
-	R_ResizeScreenImages();
-	FBO_Resize();
+	R_UpdateViewScale();
 
 	ri.Printf( PRINT_ALL, "Window resized to %dx%d pixels\n", glConfig.vidWidth, glConfig.vidHeight );
 	*config = glConfig;
