@@ -1436,9 +1436,10 @@ qboolean FS_LastFileIsGameContent( void ) {
 Engine-provided cosmetic overrides. A product may install OVERRIDE_PAK ".pk3",
 and OVERRIDE_PAK "-hi.pk3" at a higher resolution, beside its binary, with
 its own versions of the 2D images listed here under any image extension.
-While the client uses them (FS_SetOverrides), they alone answer for those
-names, ahead of the game's paks and on pure servers too, so the renderer,
-asked for a stock .tga they lack, finds their .png. They aren't search
+While the client uses them (FS_SetOverrides), they answer for those names
+in place of the base game's own paks, on pure servers too, so the renderer,
+asked for a stock .tga they lack, finds their .png; a mod's or any other
+pak's version, as the normal search would find it, still wins. They aren't search
 paths: they supply nothing else, and the pure and referenced paks, which
 servers check, don't include them.
 */
@@ -1488,6 +1489,52 @@ static int FS_OverrideName( const char *filename ) {
 
 /*
 ===========
+FS_IsStockPak
+
+Whether a pak is one of the base game's own, pak0 to pak8 in its directory
+===========
+*/
+static qboolean FS_IsStockPak( const pack_t *pak ) {
+	const char	*name = pak->pakBasename;
+
+	return !Q_stricmp( pak->pakGamename, com_basegame->string ) && strlen( name ) == 4
+		&& !Q_stricmpn( name, "pak", 3 ) && name[3] >= '0' && name[3] < '0' + NUM_ID_PAKS;
+}
+
+/*
+===========
+FS_FromStockPak
+
+Whether the normal search would find filename's image, under any image
+extension, first in one of the base game's own paks, or nowhere. Where a
+mod or another pak has its own version, the override steps aside, and the
+renderer loads what it would without it.
+===========
+*/
+static qboolean FS_FromStockPak( const char *filename ) {
+	static const char * const extensions[] = { "tga", "jpg", "jpeg", "png", "bmp", "pcx", "pvr", "dds" };
+	char			name[MAX_QPATH], path[MAX_QPATH];
+	searchpath_t	*search;
+	int				i;
+
+	COM_StripExtension( FS_SkipPathPrefix( filename ), name, sizeof( name ) );
+	for ( search = fs_searchpaths; search; search = search->next ) {
+		// as FS_FOpenFileRead searches, within a pure server's limits
+		if ( search->pack ? !FS_PakIsPure( search->pack ) : fs_numServerPaks != 0 ) {
+			continue;
+		}
+		for ( i = 0; i < ARRAY_LEN( extensions ); i++ ) {
+			Com_sprintf( path, sizeof( path ), "%s.%s", name, extensions[i] );
+			if ( FS_FOpenFileReadDir( path, search, NULL, qfalse, qfalse ) > 0 ) {
+				return search->pack && FS_IsStockPak( search->pack );
+			}
+		}
+	}
+	return qtrue;
+}
+
+/*
+===========
 FS_OverridePak
 
 The override pak that answers for filename, the higher resolution's if in
@@ -1498,7 +1545,8 @@ game's paks answer
 static pack_t *FS_OverridePak( const char *filename ) {
 	int		name, pak;
 
-	if ( fs_overrides == FS_OVERRIDES_NONE || ( name = FS_OverrideName( filename ) ) < 0 ) {
+	if ( fs_overrides == FS_OVERRIDES_NONE || ( name = FS_OverrideName( filename ) ) < 0
+		|| !FS_FromStockPak( filename ) ) {
 		return NULL;
 	}
 
