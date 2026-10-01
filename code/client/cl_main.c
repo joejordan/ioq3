@@ -3226,12 +3226,44 @@ qboolean CL_FrameReady( void ) {
 
 /*
 ============
+CL_SetFontOverrides
+
+Picks the character and number sheets the renderer loads next: the ones
+installed with the client (FS_SetOverrides), at the resolution the window
+calls for, or with cl_classicFonts the game's
+============
+*/
+static void CL_SetFontOverrides( void ) {
+	// latched, so a change takes effect on vid_restart, which comes here again
+	cvar_t			*classic = Cvar_Get( "cl_classicFonts", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	fsOverrides_t	overrides = FS_OVERRIDES_NORMAL;
+
+	Cvar_SetDescription( classic, "Use the game's own character and number sheets, not the ones installed "
+		"with the client; takes effect on vid_restart" );
+
+	if ( classic->integer ) {
+		overrides = FS_OVERRIDES_NONE;
+	}
+#ifndef __EMSCRIPTEN__
+	// the higher resolution where 640x480 is drawn at 3 times or more; never
+	// in the browser, whose memory is short
+	else if ( MIN( cls.glconfig.vidWidth / (float)SCREEN_WIDTH, cls.glconfig.vidHeight / (float)SCREEN_HEIGHT ) >= 3.0f ) {
+		overrides = FS_OVERRIDES_HIGH;
+	}
+#endif
+	FS_SetOverrides( overrides );
+}
+
+/*
+============
 CL_InitRenderer
 ============
 */
 void CL_InitRenderer( void ) {
 	// this sets up the renderer and calls R_Init
 	re.BeginRegistration( &cls.glconfig );
+
+	CL_SetFontOverrides();
 
 	// load character sets
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );

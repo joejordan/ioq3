@@ -1426,6 +1426,105 @@ qboolean FS_LastFileIsGameContent( void ) {
 	return fs_lastFileIsGameContent;
 }
 
+// the client's, not a dedicated server's
+#if defined( OVERRIDE_PAK ) && !defined( DEDICATED )
+#define USE_OVERRIDE_PAKS
+#endif
+
+#ifdef USE_OVERRIDE_PAKS
+/*
+Engine-provided cosmetic overrides. A product may install OVERRIDE_PAK ".pk3",
+and OVERRIDE_PAK "-hi.pk3" at a higher resolution, beside its binary, with
+its own versions of the 2D images listed here under any image extension.
+While the client uses them (FS_SetOverrides), they alone answer for those
+names, ahead of the game's paks and on pure servers too, so the renderer,
+asked for a stock .tga they lack, finds their .png. They aren't search
+paths: they supply nothing else, and the pure and referenced paks, which
+servers check, don't include them.
+*/
+static const char * const fs_overrideNames[] = {
+	"gfx/2d/bigchars",
+	"gfx/2d/numbers/zero_32b",
+	"gfx/2d/numbers/one_32b",
+	"gfx/2d/numbers/two_32b",
+	"gfx/2d/numbers/three_32b",
+	"gfx/2d/numbers/four_32b",
+	"gfx/2d/numbers/five_32b",
+	"gfx/2d/numbers/six_32b",
+	"gfx/2d/numbers/seven_32b",
+	"gfx/2d/numbers/eight_32b",
+	"gfx/2d/numbers/nine_32b",
+	"gfx/2d/numbers/minus_32b",
+	"menu/art/font1_prop",
+	"menu/art/font1_prop_glo",
+	"menu/art/font2_prop"
+};
+
+// the usual resolution's pak and the higher one's, where installed, and
+// which of fs_overrideNames each holds, a bit each
+static pack_t			*fs_overridePaks[2];
+static int				fs_overridePakNames[2];
+static fsOverrides_t	fs_overrides;
+
+/*
+===========
+FS_OverrideName
+
+The index of a name in fs_overrideNames, its extension aside, or -1
+===========
+*/
+static int FS_OverrideName( const char *filename ) {
+	char	name[MAX_QPATH];
+	int		i;
+
+	COM_StripExtension( FS_SkipPathPrefix( filename ), name, sizeof( name ) );
+	for ( i = 0; i < ARRAY_LEN( fs_overrideNames ); i++ ) {
+		if ( !FS_FilenameCompare( name, fs_overrideNames[i] ) ) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+/*
+===========
+FS_OverridePak
+
+The override pak that answers for filename, the higher resolution's if in
+use and it has the image, else the usual one's; NULL if none does, and the
+game's paks answer
+===========
+*/
+static pack_t *FS_OverridePak( const char *filename ) {
+	int		name, pak;
+
+	if ( fs_overrides == FS_OVERRIDES_NONE || ( name = FS_OverrideName( filename ) ) < 0 ) {
+		return NULL;
+	}
+
+	for ( pak = fs_overrides == FS_OVERRIDES_HIGH; pak >= 0; pak-- ) {
+		if ( fs_overridePakNames[pak] & ( 1 << name ) ) {
+			return fs_overridePaks[pak];
+		}
+	}
+	return NULL;
+}
+#endif
+
+/*
+===========
+FS_SetOverrides
+
+Which override images the client reads, if any (see fs_overrideNames);
+takes effect as images are next loaded
+===========
+*/
+void FS_SetOverrides( fsOverrides_t overrides ) {
+#ifdef USE_OVERRIDE_PAKS
+	fs_overrides = overrides;
+#endif
+}
+
 /*
 ===========
 FS_FOpenFileRead
@@ -1446,6 +1545,18 @@ long FS_FOpenFileRead(const char *filename, fileHandle_t *file, qboolean uniqueF
 		Com_Error(ERR_FATAL, "Filesystem call made without initialization");
 
 	fs_lastFileIsGameContent = qfalse;
+
+#ifdef USE_OVERRIDE_PAKS
+	{
+		searchpath_t	override = { 0 };
+
+		override.pack = FS_OverridePak( filename );
+		if ( override.pack ) {
+			return FS_FOpenFileReadDir( filename, &override, file, uniqueFILE, qtrue );
+		}
+	}
+#endif
+
 	isLocalConfig = FS_IsLocalConfig( filename );
 	for(search = fs_searchpaths; search; search = search->next)
 	{
@@ -3344,6 +3455,16 @@ void FS_Shutdown( qboolean closemfp ) {
 	// any FS_ calls will now be an error until reinitialized
 	fs_searchpaths = NULL;
 
+#ifdef USE_OVERRIDE_PAKS
+	for ( i = 0; i < ARRAY_LEN( fs_overridePaks ); i++ ) {
+		if ( fs_overridePaks[i] ) {
+			FS_FreePak( fs_overridePaks[i] );
+			fs_overridePaks[i] = NULL;
+		}
+		fs_overridePakNames[i] = 0;
+	}
+#endif
+
 	Cmd_RemoveCommand( "path" );
 	Cmd_RemoveCommand( "dir" );
 	Cmd_RemoveCommand( "fdir" );
@@ -3524,6 +3645,41 @@ static void FS_ImportPredecessorConfig( const char *predHome, const char *gameNa
 	FS_MarkPredecessorConfig( mark, from );
 }
 
+#ifdef USE_OVERRIDE_PAKS
+/*
+================
+FS_LoadOverridePaks
+
+Loads the override paks installed beside the client's binary, or in a macOS
+app's Resources, and notes which of the overridden images each holds
+================
+*/
+static void FS_LoadOverridePaks( void ) {
+	static const char * const suffixes[] = { "", "-hi" };
+	const char	*dir = Sys_DefaultAppPath();
+	char		path[MAX_OSPATH];
+	pack_t		*pak;
+	int			i, j, n;
+
+#ifdef __APPLE__
+	if ( strstr( dir, "Contents/MacOS" ) ) {
+		dir = va( "%s/../Resources", dir );
+	}
+#endif
+
+	for ( i = 0; i < ARRAY_LEN( suffixes ); i++ ) {
+		Com_sprintf( path, sizeof( path ), "%s%c%s%s.pk3", dir, PATH_SEP, OVERRIDE_PAK, suffixes[i] );
+		fs_overridePaks[i] = pak = FS_LoadZipFile( path, OVERRIDE_PAK );
+		fs_overridePakNames[i] = 0;
+		for ( j = 0; pak && j < pak->numfiles; j++ ) {
+			if ( ( n = FS_OverrideName( pak->buildBuffer[j].name ) ) >= 0 ) {
+				fs_overridePakNames[i] |= 1 << n;
+			}
+		}
+	}
+}
+#endif
+
 /*
 ================
 FS_Startup
@@ -3630,6 +3786,10 @@ static void FS_Startup( const char *gameName )
 	// https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=506
 	// reorder the pure pk3 files according to server order
 	FS_ReorderPurePaks();
+
+#ifdef USE_OVERRIDE_PAKS
+	FS_LoadOverridePaks();
+#endif
 
 	// print the current search paths
 	FS_Path_f();

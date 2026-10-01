@@ -116,6 +116,10 @@ if(DEFINED PROTOCOL_HANDLER_SCHEMES)
 endif()
 set_property(SOURCE code/sys/sys_main.c code/sys/sys_unix.c
     APPEND PROPERTY COMPILE_DEFINITIONS APP_ID="${APP_ID}")
+if(DEFINED OVERRIDE_PAK)
+    set_property(SOURCE code/qcommon/files.c
+        APPEND PROPERTY COMPILE_DEFINITIONS OVERRIDE_PAK="${OVERRIDE_PAK}")
+endif()
 
 # For CI to read from
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/version.txt CONTENT ${PRODUCT_VERSION})

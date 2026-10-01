@@ -67,6 +67,9 @@ set_identity(LINUX_METAINFO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/misc/linux/client.m
 set_identity(COPYRIGHT "QUAKE III ARENA Copyright © 1999-2000 id Software, Inc. All rights reserved.")
 
 set_identity(CONTACT_EMAIL "info@ioquake.org")
+# OVERRIDE_PAK: the name of the paks a product installs beside the client,
+# <name>.pk3 and <name>-hi.pk3, with its own character and number sheets
+# (files.c); unset, none
 # The link schemes that open the client (quake3://connect/<server>), a
 # list: the macOS app declares them, the Linux desktop entry too, and the
 # client registers them for the user at startup on Windows and Linux

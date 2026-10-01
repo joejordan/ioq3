@@ -807,6 +807,17 @@ qboolean	FS_LastFileIsGameContent( void );
 // whether the last file FS_FOpenFileRead, and so FS_ReadFile, found is in a
 // pk3 or a pk3dir, not a game directory
 
+typedef enum {
+	FS_OVERRIDES_NONE,
+	FS_OVERRIDES_NORMAL,
+	FS_OVERRIDES_HIGH
+} fsOverrides_t;
+
+void	FS_SetOverrides( fsOverrides_t overrides );
+// which of the engine's own versions of a few 2D images, from paks installed
+// with it, the client reads (files.c): none, the usual resolution's, or the
+// higher one's where installed
+
 int		FS_FileIsInPAK(const char *filename, int *pChecksum );
 // returns 1 if a file is in the PAK file, otherwise -1
 
@@ -1297,9 +1308,7 @@ char	*Sys_SteamPath(void);
 char	*Sys_GogPath(void);
 char	*Sys_MicrosoftStorePath(void);
 
-#ifdef __APPLE__
 char    *Sys_DefaultAppPath(void);
-#endif
 
 char	*Sys_DefaultHomeConfigPath(void);
 char	*Sys_DefaultHomeDataPath(void);

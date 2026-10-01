@@ -135,6 +135,10 @@ ioquake3({
     preRun: [async (module) => {
         module.addRunDependency('setup-ioq3-filesystem');
         try {
+            // the pak installed with the engine (OVERRIDE_PAK, files.c),
+            // fetched beside it and written where its binary path is
+            const overridePak = '@OVERRIDE_PAK@';
+            const overrideFetch = overridePak && fetch(enginePath + overridePak + '.pk3').catch(() => null);
             const config = await configPromise;
             const gamedirs = [com_basegame,fs_basegame,fs_game];
             for (let g = 0; g < gamedirs.length; g++) {
@@ -158,6 +162,11 @@ ioquake3({
                     module.FS.mkdirTree(dir);
                     module.FS.writeFile(`${dir}/${name}`, new Uint8Array(data));
                 }
+            }
+            if (overrideFetch) {
+                const response = await overrideFetch;
+                if (response?.ok)
+                    module.FS.writeFile(`/${overridePak}.pk3`, new Uint8Array(await response.arrayBuffer()));
             }
         } finally {
             module.removeRunDependency('setup-ioq3-filesystem');
