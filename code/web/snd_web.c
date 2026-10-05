@@ -195,7 +195,7 @@ at its place in the loops' shared cycle, as snd_mix.c paints them.
 static void S_WebUpdateLoops( void )
 {
 	int			i, j, free;
-	int			keys[MAX_CHANNELS], kept[MAX_CHANNELS];
+	int			loopKeys[MAX_CHANNELS], kept[MAX_CHANNELS];
 	channel_t	*ch;
 	sfx_t		*sfx;
 	qboolean	used[MAX_CHANNELS] = { qfalse };
@@ -203,7 +203,7 @@ static void S_WebUpdateLoops( void )
 	// the loops still playing keep their strips
 	for ( i = 0, ch = loop_channels; i < numLoopChannels; i++, ch++ ) {
 		kept[i] = -1;
-		keys[i] = ch->doppler ? ch->entnum + 1 : 0;
+		loopKeys[i] = ch->doppler ? ch->entnum + 1 : 0;
 		sfx = ch->thesfx;
 		if ( !sfx || !sfx->soundLength ) {
 			continue;
@@ -211,7 +211,7 @@ static void S_WebUpdateLoops( void )
 		for ( j = 0; j < MAX_CHANNELS; j++ ) {
 			const webStrip_t *s = &strips[LOOP_STRIP( j )];
 
-			if ( !used[j] && s->sfx == sfx && s->key == keys[i] ) {
+			if ( !used[j] && s->sfx == sfx && s->key == loopKeys[i] ) {
 				kept[i] = j;
 				used[j] = qtrue;
 				break;
@@ -242,7 +242,7 @@ static void S_WebUpdateLoops( void )
 			used[j] = qtrue;
 		}
 
-		S_WebSet( LOOP_STRIP( j ), sfx, keys[i], (float)( s_soundtime % sfx->soundLength ) / dma.speed, qtrue,
+		S_WebSet( LOOP_STRIP( j ), sfx, loopKeys[i], (float)( s_soundtime % sfx->soundLength ) / dma.speed, qtrue,
 			ch->leftvol, ch->rightvol, ch->doppler ? ch->dopplerScale : 1.0f );
 	}
 }
