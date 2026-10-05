@@ -245,16 +245,38 @@ const sound = (() => {
     let context = null, master = null, merger = null, open = null;
     // The engine's frames say the game runs, not the page's visibility,
     // which an extension can fake (docs/design/audio.md, "When the frames
-    // stop"). They've stopped after FRAMES_STOP seconds without one, longer
-    // than a slow frame (a shader's first compile), and come steadily again
-    // after STEADY seconds without such a gap: a throttled page's come a few
-    // at a time and never do. The sound runs only while they're steady.
-    // Each update holds the gain `open` a while more, on the audio thread's
-    // clock, so the sound closes when the frames stop with no frame or
-    // timer to close it. Hidden, or with no steady frames for STALL_SUSPEND
-    // seconds, the context is suspended too, to spare the device.
+    // stop"). They've stopped once the page has waited FRAMES_STOP seconds
+    // for the browser to run one: a frame of the engine's own that takes
+    // long (a map's load, a shader's first compile) isn't waiting, and is
+    // the game running. They come steadily again after STEADY seconds
+    // without such a wait: a throttled page's come a few at a time and
+    // never do. The sound runs only while they're steady. Each update holds
+    // the gain `open` a while more, on the audio thread's clock, so the
+    // sound closes when the frames stop with no frame or timer to close
+    // it. Hidden, or with no steady frames for STALL_SUSPEND seconds, the
+    // context is suspended too, to spare the device.
     const FRAMES_STOP = 0.5, STEADY = 0.25, STALL_SUSPEND = 5;
-    let lastUpdate = -Infinity, steadySince = -Infinity, lastSteady = -Infinity;
+    let steadySince = -Infinity, lastSteady = -Infinity;
+    // The longest the page has waited for a frame since the last update, in
+    // seconds: from one frame's callbacks ending to the next frame's
+    // starting. The engine's main loop asks for its frames here.
+    let waited = 0;
+    {
+        const raf = window.requestAnimationFrame.bind(window);
+        let ended = performance.now(), frame = null;
+        window.requestAnimationFrame = (callback) => raf((time) => {
+            // a frame's first callback; the others are the same frame's
+            if (time !== frame) {
+                frame = time;
+                waited = Math.max(waited, (performance.now() - ended) / 1000);
+            }
+            try {
+                callback(time);
+            } finally {
+                ended = performance.now();
+            }
+        });
+    }
     // the context time `open` was last held open from, or null while shut
     let openedAt = null;
     // the page suspended the context, not the browser
@@ -315,11 +337,12 @@ const sound = (() => {
     };
     // Shut and suspended, what played waits, unheard, until the next update
     // says the sound stopped: the engine then stops it all and starts what
-    // the game's time has. The next update is a gap however short the hide,
-    // or the paused nodes would play on, behind the game's time
+    // the game's time has. The next update sees the frames stopped however
+    // short the hide, or the paused nodes would play on, behind the game's
+    // time
     const suspend = () => {
         hold(false);
-        lastUpdate = -Infinity;
+        waited = Infinity;
         suspended = true;
         context.suspend().catch(() => {});
     };
@@ -385,8 +408,8 @@ const sound = (() => {
         // snd_web.c's operations: op, strip, then its values
         update(commands) {
             const now = performance.now() / 1000;
-            if (now - lastUpdate >= FRAMES_STOP) steadySince = now;
-            lastUpdate = now;
+            if (waited >= FRAMES_STOP) steadySince = now;
+            waited = 0;
             const steady = now - steadySince >= STEADY;
             if (steady) lastSteady = now;
             if (!context) return false;
