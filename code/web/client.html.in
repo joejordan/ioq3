@@ -255,7 +255,7 @@ const sound = (() => {
     // sound closes when the frames stop with no frame or timer to close
     // it. Hidden, or with no steady frames for STALL_SUSPEND seconds, the
     // context is suspended too, to spare the device.
-    const FRAMES_STOP = 0.5, STEADY = 0.25, STALL_SUSPEND = 5;
+    const FRAMES_STOP = 0.75, STEADY = 0.25, STALL_SUSPEND = 5;
     let steadySince = -Infinity, lastSteady = -Infinity;
     // The longest the page has waited for a frame since the last update, in
     // seconds: from one frame's callbacks ending to the next frame's
