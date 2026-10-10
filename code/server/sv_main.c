@@ -162,6 +162,16 @@ void SV_AddServerCommand( client_t *client, const char *cmd ) {
 	if( client->state < CS_PRIMED )
 		return;
 
+	// nor, while the client loads the map, what's only said to it: a
+	// print, a chat or a centre print. A load that takes a while on a busy
+	// server would otherwise fill its 64 and drop it ("Server command
+	// overflow"), for lines it would only show, stale, once loaded; they
+	// carry no state, and configstrings wait for it in csUpdated (GAM-018,
+	// as baseq3a's game code mutes prints to connecting clients)
+	if ( client->state == CS_PRIMED && ( !Q_strncmp( cmd, "print ", 6 ) || !Q_strncmp( cmd, "chat ", 5 ) ||
+		!Q_strncmp( cmd, "tchat ", 6 ) || !Q_strncmp( cmd, "cp ", 3 ) ) )
+		return;
+
 	client->reliableSequence++;
 	// if we would be losing an old command that hasn't been acknowledged,
 	// or that the client hasn't had a snapshot with (snapshotAcknowledge),
