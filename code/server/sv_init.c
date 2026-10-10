@@ -457,6 +457,7 @@ plays, from which data and home, and how players and admins reach it
 static void SV_PrintStartSummary( void ) {
 	static qboolean	printed;
 	int				net = Cvar_VariableIntegerValue( "net_enabled" );
+	int				i;
 
 	if ( printed || !com_dedicated->integer ) {
 		return;
@@ -480,8 +481,15 @@ static void SV_PrintStartSummary( void ) {
 	if ( net & NET_ENABLEV6 ) {
 		Com_Printf( "  port:     UDP %d (IPv6)\n", Cvar_VariableIntegerValue( "net_port6" ) );
 	}
-	if ( com_dedicated->integer == 2 ) {
+	for ( i = 0; i < MAX_MASTER_SERVERS; i++ ) {
+		if ( sv_master[i]->string[0] ) {
+			break;
+		}
+	}
+	if ( com_dedicated->integer == 2 && i < MAX_MASTER_SERVERS ) {
 		Com_Printf( "  listed:   on the master servers (dedicated 2)\n" );
+	} else if ( com_dedicated->integer == 2 ) {
+		Com_Printf( "  listed:   no, no master servers are set (sv_master1 and on)\n" );
 	} else {
 		Com_Printf( "  listed:   no, found on the local network only; dedicated 2 lists it\n" );
 	}
