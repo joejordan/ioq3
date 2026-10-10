@@ -358,6 +358,7 @@ typedef struct {
 	netadr_t	authorizeServer;
 
 	netadr_t	rconAddress;
+	int			rconTime;		// cls.realtime of the last rcon sent
 
 	// rendering info
 	glconfig_t	glconfig;
