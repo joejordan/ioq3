@@ -2742,15 +2742,18 @@ void CL_ServersResponsePacket( const netadr_t* from, msg_t *msg, qboolean extend
 
 /*
 =================
-CL_RefusalPasses
+CL_RefusalEnds
 
-Whether a server's refusal of a connect is one that waiting can change, as
-"Server is full" or a challenge that went astray, which the connect is
-retried for. Any other, a password, a ban, a mod's own, a server that's
-closing, isn't (LAN-4)
+Whether a print ends the connect: one from the server it's to, while it's
+being made, is a refusal, and ends it unless waiting can change it, as
+"Server is full" or a challenge that went astray can, which the connect is
+retried for. A password, a ban, a mod's own reason, a server that's
+closing can't (LAN-4). A reply to an rcon just sent there isn't a
+refusal. The passing ones are the servers' own words: OmniFrag's are in
+sv_client.c (SV_RefuseConnect)
 =================
 */
-static qboolean CL_RefusalPasses( const char *message ) {
+static qboolean CL_RefusalEnds( netadr_t from, const char *message ) {
 	static const char *const passing[] = {
 		"Server is full",				// ioquake3's and its forks'
 		"No or bad challenge",			// ioquake3's and CNQ3's
@@ -2763,12 +2766,19 @@ static qboolean CL_RefusalPasses( const char *message ) {
 	};
 	size_t	i;
 
+	if ( ( clc.state != CA_CONNECTING && clc.state != CA_CHALLENGING ) ||
+		!NET_CompareAdr( from, clc.serverAddress ) ) {
+		return qfalse;
+	}
+	if ( NET_CompareAdr( from, cls.rconAddress ) && cls.realtime - cls.rconTime < RCON_REPLY_TIMEOUT ) {
+		return qfalse;
+	}
 	for ( i = 0; i < ARRAY_LEN( passing ); i++ ) {
 		if ( !Q_stricmpn( message, passing[i], strlen( passing[i] ) ) ) {
-			return qtrue;
+			return qfalse;
 		}
 	}
-	return qfalse;
+	return qtrue;
 }
 
 /*
@@ -2974,13 +2984,7 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 				clc.serverMessage[--length] = '\0';
 			}
 
-			// the server's refusal of our connect: one that waiting won't
-			// change ends the attempt, rather than be asked again for ever.
-			// A reply to an rcon just sent there isn't one
-			if ( ( clc.state == CA_CONNECTING || clc.state == CA_CHALLENGING ) &&
-				NET_CompareAdr( from, clc.serverAddress ) &&
-				!( NET_CompareAdr( from, cls.rconAddress ) && cls.realtime - cls.rconTime < 10000 ) &&
-				!CL_RefusalPasses( clc.serverMessage ) ) {
+			if ( CL_RefusalEnds( from, clc.serverMessage ) ) {
 				Com_Error( ERR_DROP, "Refused by the server: %s",
 					clc.serverMessage[0] ? clc.serverMessage : "no reason given" );
 			}

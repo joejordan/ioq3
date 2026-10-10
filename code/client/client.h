@@ -43,6 +43,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define QKEY_SIZE 2048
 
 #define	RETRANSMIT_TIMEOUT	3000	// time between connection packet retransmits
+#define	RCON_REPLY_TIMEOUT	10000	// how long a print after an rcon may be its reply (CL_RefusalEnds)
 
 // snapshots are a view of the server at a given time
 typedef struct {
