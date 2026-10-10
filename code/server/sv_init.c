@@ -492,6 +492,26 @@ static void SV_PrintStartSummary( void ) {
 
 /*
 ================
+SV_PrintReady
+
+Once a dedicated server's map is up and players can join, a line that
+tools wait for, the same from version to version: "server ready: <map>
+<port>". A service manager that asked (NOTIFY_SOCKET) is told too
+================
+*/
+static void SV_PrintReady( void ) {
+	int	net = Cvar_VariableIntegerValue( "net_enabled" );
+	int	port = Cvar_VariableIntegerValue( ( net & NET_ENABLEV4 ) ? "net_port" : "net_port6" );
+
+	if ( !com_dedicated->integer ) {
+		return;
+	}
+	Com_Printf( "server ready: %s %d\n", sv_mapname->string, port );
+	Sys_Notify( va( "READY=1\nSTATUS=%s on UDP port %d", sv_mapname->string, port ) );
+}
+
+/*
+================
 SV_StartDefaultMap
 
 Whether a dedicated server with no map started the default one: once its
@@ -771,6 +791,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	Com_Printf ("-----------------------------------\n");
 
 	SV_PrintStartSummary();
+	SV_PrintReady();
 }
 
 /*

@@ -367,6 +367,8 @@ Single exit point (regular exit or in case of error)
 */
 static Q_NO_RETURN void Sys_Exit( int exitCode )
 {
+	Sys_Notify( "STOPPING=1" );
+
 	CON_Shutdown( );
 
 #ifndef DEDICATED
