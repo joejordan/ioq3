@@ -529,6 +529,12 @@ void SV_DirectConnect( netadr_t from ) {
 		}
 	}
 
+	// a draining server takes no new player: the ones on it reconnect above
+	if ( sv_drainReason[0] ) {
+		SV_RefuseConnect( from, "%s\n", sv_drainReason );
+		return;
+	}
+
 	// find a client slot
 	// if "sv_privateClients" is set > 0, then that number
 	// of client slots will be reserved for connections that
