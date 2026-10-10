@@ -486,6 +486,9 @@ static void SV_PrintStartSummary( void ) {
 		Com_Printf( "  listed:   no, found on the local network only; dedicated 2 lists it\n" );
 	}
 	Com_Printf( "  password: %s\n", Cvar_VariableString( "g_password" )[0] ? "on (g_password)" : "none" );
+#ifdef _WIN32
+	Sys_PrintFirewall( NET_Port() );
+#endif
 	Com_Printf( "  rcon:     %s\n", sv_rconPassword->string[0] ? "on (rconpassword)" : "off: set rconpassword to use it" );
 	SV_NoteFrameRate();
 }
