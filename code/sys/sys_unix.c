@@ -1603,3 +1603,14 @@ void Sys_Notify( const char *state )
 	close( fd );
 #endif
 }
+
+/*
+=================
+Sys_PrintFirewall
+
+Firewalls elsewhere aren't read
+=================
+*/
+void Sys_PrintFirewall( int port )
+{
+}
