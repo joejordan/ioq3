@@ -500,8 +500,7 @@ tools wait for, the same from version to version: "server ready: <map>
 ================
 */
 static void SV_PrintReady( void ) {
-	int	net = Cvar_VariableIntegerValue( "net_enabled" );
-	int	port = Cvar_VariableIntegerValue( ( net & NET_ENABLEV4 ) ? "net_port" : "net_port6" );
+	int	port = NET_Port();
 
 	if ( !com_dedicated->integer ) {
 		return;

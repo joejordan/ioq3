@@ -198,25 +198,48 @@ char *Sys_GetClipboardData(void)
 #endif
 }
 
-#ifdef DEDICATED
-#	define PID_FILENAME PRODUCT_NAME "_server.pid"
-#else
-#	define PID_FILENAME PRODUCT_NAME ".pid"
-#endif
+#define PID_SERVER_PREFIX PRODUCT_NAME "_server"
 
 /*
 =================
 Sys_PIDFileName
+
+A dedicated server's carries its port, so that servers on other ports in
+the same home keep their own
 =================
 */
 static char *Sys_PIDFileName( const char *gamedir )
 {
 	const char *homeStatePath = Cvar_VariableString( "fs_homestatepath" );
 
-	if( *homeStatePath != '\0' )
-		return va( "%s/%s/%s", homeStatePath, gamedir, PID_FILENAME );
+	if( *homeStatePath == '\0' )
+		return NULL;
 
-	return NULL;
+	if( !Com_IsClient( ) )
+		return va( "%s/%s/" PID_SERVER_PREFIX "_%d.pid", homeStatePath, gamedir, NET_Port( ) );
+
+	return va( "%s/%s/" PRODUCT_NAME ".pid", homeStatePath, gamedir );
+}
+
+/*
+=================
+Sys_ReadPIDFile
+
+The process a PID file names, 0 if it names none or can't be read
+=================
+*/
+static int Sys_ReadPIDFile( const char *pidFile )
+{
+	char	pidBuffer[ 64 ] = { 0 };
+	FILE	*f;
+
+	if( ( f = fopen( pidFile, "r" ) ) == NULL )
+		return 0;
+	if( fread( pidBuffer, sizeof( char ), sizeof( pidBuffer ) - 1, f ) == 0 )
+		pidBuffer[ 0 ] = '\0';
+	fclose( f );
+
+	return atoi( pidBuffer );
 }
 
 // the PID file this process wrote, "" for none
@@ -257,20 +280,8 @@ static qboolean Sys_WritePIDFile( const char *gamedir )
 	// First, check if the pid file is already there
 	if( ( f = fopen( pidFile, "r" ) ) != NULL )
 	{
-		char  pidBuffer[ 64 ] = { 0 };
-		int   pid;
-
-		pid = fread( pidBuffer, sizeof( char ), sizeof( pidBuffer ) - 1, f );
 		fclose( f );
-
-		if(pid > 0)
-		{
-			pid = atoi( pidBuffer );
-			if( !Sys_PIDIsRunning( pid ) )
-				stale = qtrue;
-		}
-		else
-			stale = qtrue;
+		stale = !Sys_PIDIsRunning( Sys_ReadPIDFile( pidFile ) );
 	}
 
 	if( FS_CreatePath( pidFile ) ) {
@@ -291,11 +302,55 @@ static qboolean Sys_WritePIDFile( const char *gamedir )
 
 /*
 =================
+Sys_WarnSharedHome
+
+Another dedicated server running in the same home and game directory
+shares its saved settings and logs: a dedicated server says so as it
+starts, naming the other by its PID file
+=================
+*/
+static void Sys_WarnSharedHome( const char *gamedir )
+{
+	const char	*homeStatePath = Cvar_VariableString( "fs_homestatepath" );
+	char		directory[ MAX_OSPATH ];
+	char		**files;
+	int			numFiles, i, pid;
+
+	if( Com_IsClient( ) || !pidFileWritten[ 0 ] || !*homeStatePath )
+		return;
+
+	Com_sprintf( directory, sizeof( directory ), "%s/%s", homeStatePath, gamedir );
+	files = Sys_ListFiles( directory, ".pid", NULL, &numFiles, qfalse );
+	for( i = 0; i < numFiles; i++ )
+	{
+		const char *pidFile = va( "%s/%s", directory, files[ i ] );
+
+		if( Q_stricmpn( files[ i ], PID_SERVER_PREFIX, strlen( PID_SERVER_PREFIX ) ) ||
+			!Q_stricmp( pidFile, pidFileWritten ) )
+			continue;
+
+		pid = Sys_ReadPIDFile( pidFile );
+		if( pid > 0 && pid != Sys_PID( ) && Sys_PIDIsRunning( pid ) )
+		{
+			Com_Printf( S_COLOR_YELLOW "WARNING: another server, process %d (%s), runs in this "
+				"home, %s: the two share its saved settings (q3config_server.cfg), qconsole.log "
+				"and games.log. Give each server a home of its own: +set fs_homepath <folder>.\n",
+				pid, files[ i ], Cvar_VariableString( "fs_homepath" ) );
+		}
+	}
+	Sys_FreeFileList( files );
+}
+
+/*
+=================
 Sys_InitPIDFile
 =================
 */
 void Sys_InitPIDFile( const char *gamedir ) {
-	if( Sys_WritePIDFile( gamedir ) ) {
+	qboolean stale = Sys_WritePIDFile( gamedir );
+
+	Sys_WarnSharedHome( gamedir );
+	if( stale ) {
 #ifndef DEDICATED
 		char message[1024];
 		char modName[MAX_OSPATH];
@@ -1104,6 +1159,10 @@ static void Sys_Start( int argc, char **argv )
 	CON_Init( );
 	Com_Init( commandLine );
 	NET_Init( );
+
+	// its PID file carries the port it opened (Sys_PIDFileName)
+	if( !Com_IsClient( ) )
+		Sys_InitPIDFile( FS_GetCurrentGameDir( ) );
 
 #ifdef USE_PROTOCOL_REGISTRATION
 	{
