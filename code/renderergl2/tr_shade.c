@@ -844,7 +844,6 @@ static void ForwardDlight( void ) {
 		}
 
 		dl = &backEnd.refdef.dlights[l];
-		//VectorCopy( dl->transformed, origin );
 		radius = dl->radius;
 		//scale = 1.0f / radius;
 
@@ -910,7 +909,8 @@ static void ForwardDlight( void ) {
 		VectorSet(vector, 0, 0, 0);
 		GLSL_SetUniformVec3(sp, UNIFORM_AMBIENTLIGHT, vector);
 
-		VectorCopy(dl->origin, vector);
+		// in the surface's space, as its vertices are
+		VectorCopy(dl->transformed, vector);
 		vector[3] = 1.0f;
 		GLSL_SetUniformVec4(sp, UNIFORM_LIGHTORIGIN, vector);
 
