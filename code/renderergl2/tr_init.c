@@ -1112,6 +1112,10 @@ void GL_SetDefaultState( void )
 	glState.currentVao = NULL;
 	glState.vertexAttribsEnabled = 0;
 
+	// an MD3 has no vertex colors, so a stage with rgbGen vertex reads the
+	// color attribute's constant value, which is the context's, not a VAO's
+	qglVertexAttrib4fv(ATTR_INDEX_COLOR, colorWhite);
+
 	qglPolygonMode (GL_FRONT_AND_BACK, GL_FILL);
 	qglDepthMask( GL_TRUE );
 	qglDisable( GL_DEPTH_TEST );
