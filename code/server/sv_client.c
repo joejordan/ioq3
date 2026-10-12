@@ -94,6 +94,9 @@ void SV_GetChallenge(netadr_t from)
 		return;
 	}
 
+	// a player is on the way: the game runs again by the time they're in
+	SV_Wake( "a player is connecting" );
+
 	oldest = 0;
 	oldestClientTime = oldestTime = 0x7fffffff;
 
