@@ -773,6 +773,7 @@ void SV_FreeClient(client_t *client)
 
 	SV_Netchan_FreeQueue(client);
 	SV_CloseDownload(client);
+	SV_ContentFreeClient(client);
 }
 
 /*
@@ -887,6 +888,7 @@ static int SV_SendClientGameState( client_t *client ) {
  	Com_DPrintf ("SV_SendClientGameState() for %s\n", client->name);
 	Com_DPrintf( "Going from CS_CONNECTED to CS_PRIMED for %s\n", client->name );
 	client->state = CS_PRIMED;
+	client->contentGamestateDue = qfalse;
 	client->pureAuthentic = 0;
 	client->gotCP = qfalse;
 	// each load says if it skips what's said, or more (SV_AddServerCommand)
@@ -1231,7 +1233,7 @@ static qboolean SV_DownloadsFull( void ) {
 		return qfalse;
 	}
 	for ( i = 0 ; i < sv_maxclients->integer ; i++ ) {
-		if ( svs.clients[i].download ) {
+		if ( svs.clients[i].download || SV_ContentTransfers( &svs.clients[i] ) ) {
 			count++;
 		}
 	}
@@ -2249,7 +2251,7 @@ void SV_UserVoip(client_t *cl, msg_t *msg, qboolean ignoreData)
 			continue;  // client is ignoring everyone.
 		else if (client->ignoreVoipFromClient[sender])
 			continue;  // client is ignoring this talker.
-		else if (*cl->downloadName)   // !!! FIXME: possible to DoS?
+		else if (SV_ClientDownloading(client))   // !!! FIXME: possible to DoS?
 			continue;  // no VoIP allowed if downloading, to save bandwidth.
 
 		if(Com_IsVoipTarget(recips, sizeof(recips), i))
@@ -2379,7 +2381,7 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 		}
 		// if we can tell that the client has dropped the last
 		// gamestate we sent them, resend it
-		if ( cl->state != CS_ACTIVE && cl->messageAcknowledge > cl->gamestateMessageNum ) {
+		if ( cl->state != CS_ACTIVE && ( cl->messageAcknowledge > cl->gamestateMessageNum || cl->contentGamestateDue ) ) {
 			Com_DPrintf( "%s : dropped gamestate, resending\n", cl->name );
 			SV_ResendGameState( cl );
 		}
