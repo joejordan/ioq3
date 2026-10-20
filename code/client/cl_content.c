@@ -2280,13 +2280,15 @@ qboolean CL_ContentCheck( void ) {
 CL_ContentCovers
 
 Whether a content manifest lists every pak the gamestate references among
-its required entries, as the server's current one does; one kept from
-before a map change may not (open question 14)
+its required entries, by checksum and name, as the server's current one
+does; one kept from before a map change may not (open question 14), or
+may list another pak with the same files under its name
 =================
 */
 static qboolean CL_ContentCovers( const byte *manifest, const ofcmHeader_t *header ) {
-	const char	*s = Info_ValueForKey( cl.gameState.stringData + cl.gameState.stringOffsets[CS_SYSTEMINFO],
-		"sv_referencedPaks" );
+	const char	*info = cl.gameState.stringData + cl.gameState.stringOffsets[CS_SYSTEMINFO];
+	const char	*s = Info_ValueForKey( info, "sv_referencedPaks" );
+	const char	*names = Info_ValueForKey( info, "sv_referencedPakNames" ), *name;
 	ofcmEntry_t	entry;
 	char		*end;
 	long		checksum;
@@ -2294,12 +2296,14 @@ static qboolean CL_ContentCovers( const byte *manifest, const ofcmHeader_t *head
 
 	for ( ;; s = end ) {
 		checksum = strtol( s, &end, 10 );
+		name = COM_ParseExt( (char **)&names, qfalse );
 		if ( end == s ) {
 			return qtrue;
 		}
 		for ( i = 0; i < header->numRequired; i++ ) {
 			OFCM_ReadEntry( manifest, i, &entry );
-			if ( (unsigned int)entry.checksum == (unsigned int)checksum ) {
+			if ( (unsigned int)entry.checksum == (unsigned int)checksum &&
+				!Q_stricmp( va( "%s/%s", entry.gameDir, entry.name ), name ) ) {
 				break;
 			}
 		}

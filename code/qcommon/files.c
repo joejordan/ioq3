@@ -414,13 +414,22 @@ static int			fs_numCachePaks;
 static int			fs_numRefusedPaks;
 
 // the hashes the content manifest of the server connected to gives paks,
-// by their checksums (FS_SetServerPakHashes): a pak with one of those is
-// mounted only with its hash
-static qboolean		fs_serverPakHashesSet;
-static byte			fs_serverPakHashesFrom[SHA256_DIGEST_SIZE];	// that content manifest's hash
-static int			fs_numServerPakHashes;
-static unsigned int	fs_serverPakHashChecksums[MAX_SEARCH_PATHS];
-static byte			fs_serverPakHashes[MAX_SEARCH_PATHS][SHA256_DIGEST_SIZE];
+// by their game directories, names and checksums (FS_SetServerPakHashes):
+// a pak with one of those is mounted only with its hash. Two paks of the
+// same files under other names share a checksum, so the name tells them
+// apart (FS_ServerPakHash)
+typedef struct {
+	unsigned int	checksum;
+	char			gameDir[OFCM_GAMEDIR_SIZE];
+	char			name[OFCM_NAME_SIZE];
+	byte			sha256[SHA256_DIGEST_SIZE];
+	qboolean		own;			// "bring your own": no hash
+} serverPakHash_t;
+
+static qboolean			fs_serverPakHashesSet;
+static byte				fs_serverPakHashesFrom[SHA256_DIGEST_SIZE];	// that content manifest's hash
+static int				fs_numServerPakHashes;
+static serverPakHash_t	*fs_serverPakHashes;
 static qboolean		fs_serverPakHashesChanged;	// since the search path was built (FS_ConditionalRestart)
 
 static qboolean FS_ContentRelativePath( const pack_t *pak, char *relative, int size );
@@ -3689,6 +3698,25 @@ static qboolean FS_HasPakChecksum( unsigned int checksum ) {
 
 /*
 ================
+FS_ServerReferencesPak
+
+Whether the server connected to references a pak with the checksum
+================
+*/
+static qboolean FS_ServerReferencesPak( unsigned int checksum )
+{
+	int		i;
+
+	for ( i = 0; i < fs_numServerReferencedPaks; i++ ) {
+		if ( fs_serverReferencedPaks[i] == checksum ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+/*
+================
 FS_SetServerPakHashes
 ================
 */
@@ -3703,12 +3731,24 @@ void FS_SetServerPakHashes( const byte *manifest, const ofcmHeader_t *header, co
 	}
 	fs_serverPakHashesSet = manifest != NULL;
 	fs_numServerPakHashes = 0;
-	for ( i = 0; manifest && i < header->numRequired && fs_numServerPakHashes < MAX_SEARCH_PATHS; i++ ) {
+	if ( fs_serverPakHashes ) {
+		Z_Free( fs_serverPakHashes );
+		fs_serverPakHashes = NULL;
+	}
+	// every entry, an optional one's name too, so a pak is told from
+	// another with its checksum (FS_ServerPakHash)
+	if ( manifest && header->numEntries > 0 ) {
+		fs_serverPakHashes = Z_Malloc( header->numEntries * sizeof( *fs_serverPakHashes ) );
+	}
+	for ( i = 0; manifest && i < header->numEntries; i++ ) {
+		serverPakHash_t	*h = &fs_serverPakHashes[fs_numServerPakHashes++];
+
 		OFCM_ReadEntry( manifest, i, &entry );
-		if ( !( entry.flags & OFCM_FLAG_OWN ) ) {
-			fs_serverPakHashChecksums[fs_numServerPakHashes] = (unsigned int)entry.checksum;
-			Com_Memcpy( fs_serverPakHashes[fs_numServerPakHashes++], entry.sha256, SHA256_DIGEST_SIZE );
-		}
+		h->checksum = (unsigned int)entry.checksum;
+		Q_strncpyz( h->gameDir, entry.gameDir, sizeof( h->gameDir ) );
+		Q_strncpyz( h->name, entry.name, sizeof( h->name ) );
+		Com_Memcpy( h->sha256, entry.sha256, SHA256_DIGEST_SIZE );
+		h->own = ( entry.flags & OFCM_FLAG_OWN ) != 0;
 	}
 	if ( manifest ) {
 		Com_Memcpy( fs_serverPakHashesFrom, sha256, SHA256_DIGEST_SIZE );
@@ -3726,18 +3766,32 @@ static qboolean FS_ServerPakHashesApply( void )
 /*
 ================
 FS_ServerPakHash
+
+The entry with the pak's game directory, name and checksum; or, when none
+has all three, as for an installed copy under another name, the first
+with its checksum
 ================
 */
-const byte *FS_ServerPakHash( unsigned int checksum )
+const byte *FS_ServerPakHash( const char *gameDir, const char *name, unsigned int checksum )
 {
-	int		i;
+	const serverPakHash_t	*h, *found = NULL;
+	int						i;
 
 	for ( i = 0; i < fs_numServerPakHashes && FS_ServerPakHashesApply(); i++ ) {
-		if ( fs_serverPakHashChecksums[i] == checksum ) {
-			return fs_serverPakHashes[i];
+		h = &fs_serverPakHashes[i];
+		if ( h->checksum != checksum ) {
+			continue;
+		}
+		if ( !Q_stricmp( h->gameDir, gameDir ) && !Q_stricmp( h->name, name ) ) {
+			found = h;
+			break;
+		}
+		// a hashed one before a "bring your own" one
+		if ( !found || found->own ) {
+			found = h;
 		}
 	}
-	return NULL;
+	return found && !found->own ? found->sha256 : NULL;
 }
 
 /*
@@ -3776,7 +3830,7 @@ installed one the index hasn't hashed passes until it has
 */
 static qboolean FS_PakHashRefused( const pack_t *pak )
 {
-	const byte			*hash = FS_ServerPakHash( pak->checksum ), *have;
+	const byte			*hash = FS_ServerPakHash( pak->pakGamename, pak->pakBasename, pak->checksum ), *have;
 	const pakRecord_t	*record;
 	pakRecord_t			key;
 	byte				sha256[SHA256_DIGEST_SIZE];
@@ -3870,7 +3924,8 @@ int FS_UnhashedServerPaks( pakRecord_t *paks, int max )
 	int					count = 0;
 
 	for ( search = fs_searchpaths; search && FS_ServerPakHashesApply(); search = search->next ) {
-		if ( !search->pack || search->pack->cached || !FS_ServerPakHash( search->pack->checksum ) ||
+		if ( !search->pack || search->pack->cached || !FS_ServerReferencesPak( search->pack->checksum ) ||
+			!FS_ServerPakHash( search->pack->pakGamename, search->pack->pakBasename, search->pack->checksum ) ||
 			!FS_PakIndexKey( search->pack, &key ) || Content_PakIndex_Find( key.root, key.path, key.size, key.mtime ) ) {
 			continue;
 		}
@@ -3927,7 +3982,7 @@ static void FS_AddCachePaks( const char *dir, const searchpath_t *below )
 		// in this directory under the server's name for it, wherever and
 		// however it was cached; if it's damaged, the next with that checksum.
 		// One the server gives a hash for, by that hash alone
-		hash = FS_ServerPakHash( fs_serverReferencedPaks[i] );
+		hash = FS_ServerPakHash( dir, slash + 1, fs_serverReferencedPaks[i] );
 		while ( ( entry = hash ? Content_Cache_FindSHA256( hash, ospath, sizeof( ospath ) ) :
 			Content_Cache_Find( fs_serverReferencedPaks[i], dir, ospath, sizeof( ospath ) ) ) >= 0 ) {
 			pak = FS_LoadZipFile( ospath, slash + 1 );
