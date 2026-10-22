@@ -877,6 +877,14 @@ typedef struct {
 	byte		color2D[4];
 	qboolean	vertexes2D;		// shader needs to be finished
 	trRefEntity_t	entity2D;	// currentEntity will point at this when doing 2D rendering
+
+	qboolean	scissor2D;		// 2D draws inside scissorRect2D, not the whole window
+	int			scissorRect2D[4];
+
+	int64_t		nsFrame;		// r_stats2D: the back end's time before the swap
+	int64_t		ns2D;			// and in 2D commands
+	int64_t		nsDraw2D;		// and of that, drawing the tessellator's 2D
+	int			numDraws2D;
 } backEndState_t;
 
 /*
@@ -945,6 +953,8 @@ typedef struct {
 
 	frontEndCounters_t		pc;
 	int						frontEndMsec;		// not in pc due to clearing issue
+	int						numCommands;		// r_stats2D: render commands this frame
+	int						numCommandBytes;	// and their bytes
 
 	//
 	// put large tables at the end, so most elements will be
@@ -1019,6 +1029,7 @@ extern	cvar_t	*r_norefresh;			// bypasses the ref rendering
 extern	cvar_t	*r_drawentities;		// disable/enable entity rendering
 extern	cvar_t	*r_drawworld;			// disable/enable world rendering
 extern	cvar_t	*r_speeds;				// various levels of information display
+extern	cvar_t	*r_stats2D;				// spike: averages of 2D's cost over this many frames
 extern  cvar_t	*r_detailTextures;		// enables/disables detail texturing stages
 extern	cvar_t	*r_novis;				// disable/enable usage of PVS
 extern	cvar_t	*r_nocull;
@@ -1514,6 +1525,28 @@ typedef struct {
 	float	s2, t2;
 } stretchPicCommand_t;
 
+// the most vertexes RE_DrawTriangles2D takes at once: half the command buffer
+#define MAX_TRIS2D_VERTS	( MAX_RENDER_COMMANDS / 2 / sizeof( polyVert2D_t ) )
+
+// followed by numVerts polyVert2D_t, already transformed, and numIndexes ints
+// (none for quads)
+typedef struct {
+	int		commandId;
+	shader_t	*shader;
+	int		numVerts;
+	int		numIndexes;
+	int		flags;			// TRIS2D_SCISSOR, TRIS2D_QUADS
+	int		scissor[4];
+} tris2DCommand_t;
+
+// followed by width * height RGBA pixels
+typedef struct {
+	int		commandId;
+	image_t	*image;
+	int		x, y;
+	int		width, height;
+} updateImageCommand_t;
+
 typedef struct {
 	int		commandId;
 	trRefdef_t	refdef;
@@ -1564,7 +1597,9 @@ typedef enum {
 	RC_SCREENSHOT,
 	RC_VIDEOFRAME,
 	RC_COLORMASK,
-	RC_CLEARDEPTH
+	RC_CLEARDEPTH,
+	RC_TRIS_2D,
+	RC_UPDATE_IMAGE
 } renderCommand_t;
 
 
@@ -1599,8 +1634,14 @@ void R_IssuePendingRenderCommands( void );
 void R_AddDrawSurfCmd( drawSurf_t *drawSurfs, int numDrawSurfs );
 
 void RE_SetColor( const float *rgba );
-void RE_StretchPic ( float x, float y, float w, float h, 
+void RE_StretchPic ( float x, float y, float w, float h,
 					  float s1, float t1, float s2, float t2, qhandle_t hShader );
+void RE_DrawTriangles2D( const tris2D_t *tris );
+qhandle_t RE_CreateImage2D( const char *name, int width, int height, const byte *rgba );
+void RE_UpdateImage2D( qhandle_t hShader, int x, int y, int width, int height, const byte *rgba );
+void RB_Scissor2D( const int *rect );
+int64_t RB_Nanoseconds( void );
+void RB_UpdateImage( image_t *image, int x, int y, int width, int height, const byte *rgba );
 void RE_BeginFrame( stereoFrame_t stereoFrame );
 void RE_EndFrame( int *frontEndMsec, int *backEndMsec );
 void RE_SaveJPG(char * filename, int quality, int image_width, int image_height,

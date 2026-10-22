@@ -579,7 +579,7 @@ void Con_DrawInput (void) {
 
 	y = con.vislines - ( g_smallchar_height * 2 );
 
-	re.SetColor( con.color );
+	SCR_SetTextColor( con.color );
 
 	SCR_DrawSmallChar( con.xadjust + 1 * g_smallchar_width, y, ']' );
 
@@ -604,8 +604,9 @@ void Con_DrawNotify (void)
 	int		skip;
 	int		currentColor;
 
+	SCR_BeginTextBatch();
 	currentColor = 7;
-	re.SetColor( g_color_table[currentColor] );
+	SCR_SetTextColor( g_color_table[currentColor] );
 
 	v = 0;
 	for (i= con.current-con_notifylines->integer ; i<=con.current ; i++)
@@ -633,7 +634,7 @@ void Con_DrawNotify (void)
 			}
 			if ( ColorIndexForNumber( text[x]>>8 ) != currentColor ) {
 				currentColor = ColorIndexForNumber( text[x]>>8 );
-				re.SetColor( g_color_table[currentColor] );
+				SCR_SetTextColor( g_color_table[currentColor] );
 			}
 			SCR_DrawSmallChar( cl_conXOffset->integer + con.xadjust + (x+1)*g_smallchar_width, v, text[x] & 0xff );
 			linelength++;
@@ -644,6 +645,7 @@ void Con_DrawNotify (void)
 		}
 	}
 
+	SCR_EndTextBatch();
 	re.SetColor( NULL );
 
 	if (Key_GetCatcher( ) & (KEYCATCH_UI | KEYCATCH_CGAME) ) {
@@ -724,7 +726,8 @@ void Con_DrawSolidConsole( float frac ) {
 
 	// draw the version number
 
-	re.SetColor( g_color_table[ColorIndex(COLOR_RED)] );
+	SCR_BeginTextBatch();
+	SCR_SetTextColor( g_color_table[ColorIndex(COLOR_RED)] );
 
 	i = strlen( Q3_VERSION );
 
@@ -744,7 +747,7 @@ void Con_DrawSolidConsole( float frac ) {
 	if (con.display != con.current)
 	{
 	// draw arrows to show the buffer is backscrolled
-		re.SetColor( g_color_table[ColorIndex(COLOR_RED)] );
+		SCR_SetTextColor( g_color_table[ColorIndex(COLOR_RED)] );
 		for (x=0 ; x<con.linewidth ; x+=4)
 			SCR_DrawSmallChar( con.xadjust + (x+1)*g_smallchar_width, y, '^' );
 		y -= g_smallchar_height;
@@ -758,7 +761,7 @@ void Con_DrawSolidConsole( float frac ) {
 	}
 
 	currentColor = 7;
-	re.SetColor( g_color_table[currentColor] );
+	SCR_SetTextColor( g_color_table[currentColor] );
 
 	for (i=0 ; i<rows ; i++, y -= g_smallchar_height, row--)
 	{
@@ -778,7 +781,7 @@ void Con_DrawSolidConsole( float frac ) {
 
 			if ( ColorIndexForNumber( text[x]>>8 ) != currentColor ) {
 				currentColor = ColorIndexForNumber( text[x]>>8 );
-				re.SetColor( g_color_table[currentColor] );
+				SCR_SetTextColor( g_color_table[currentColor] );
 			}
 			SCR_DrawSmallChar(  con.xadjust + (x+1)*g_smallchar_width, y, text[x] & 0xff );
 		}
@@ -787,6 +790,7 @@ void Con_DrawSolidConsole( float frac ) {
 	// draw the input prompt, user text, and cursor if desired
 	Con_DrawInput ();
 
+	SCR_EndTextBatch();
 	re.SetColor( NULL );
 }
 

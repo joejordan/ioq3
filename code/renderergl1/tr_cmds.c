@@ -72,6 +72,47 @@ void R_PerformanceCounters( void ) {
 
 /*
 ====================
+R_Stats2D
+
+With r_stats2D n, prints the render commands' count and bytes and the back
+end's time before the swap, a frame, averaged over n frames
+====================
+*/
+static void R_Stats2D( void ) {
+	static int		frames;
+	static int64_t	commands, bytes, ns, ns2D, nsDraw2D, draws2D;
+
+	if ( r_stats2D->integer > 0 ) {
+		commands += tr.numCommands;
+		bytes += tr.numCommandBytes;
+		ns += backEnd.nsFrame;
+		ns2D += backEnd.ns2D;
+		nsDraw2D += backEnd.nsDraw2D;
+		draws2D += backEnd.numDraws2D;
+
+		if ( ++frames >= r_stats2D->integer ) {
+			ri.Printf( PRINT_ALL, "stats2D: %i frames: %.1f commands, %.0f bytes, %.1f us in the back end, %.1f us of it in 2D, %.1f us of that in %.1f draws, a frame\n",
+				frames, commands / (double)frames, bytes / (double)frames, ns / 1000.0 / frames, ns2D / 1000.0 / frames,
+				nsDraw2D / 1000.0 / frames, draws2D / (double)frames );
+			frames = 0;
+			commands = bytes = ns = ns2D = nsDraw2D = draws2D = 0;
+		}
+	} else {
+		frames = 0;
+		commands = bytes = ns = ns2D = nsDraw2D = draws2D = 0;
+	}
+
+	tr.numCommands = 0;
+	tr.numCommandBytes = 0;
+	backEnd.nsFrame = 0;
+	backEnd.ns2D = 0;
+	backEnd.nsDraw2D = 0;
+	backEnd.numDraws2D = 0;
+}
+
+
+/*
+====================
 R_IssueRenderCommands
 ====================
 */
@@ -84,6 +125,7 @@ void R_IssueRenderCommands( qboolean runPerformanceCounters ) {
 	*(int *)(cmdList->cmds + cmdList->used) = RC_END_OF_LIST;
 
 	// clear it out, in case this is a sync and not a buffer flip
+	tr.numCommandBytes += cmdList->used;
 	cmdList->used = 0;
 
 	if ( runPerformanceCounters ) {
@@ -136,6 +178,7 @@ void *R_GetCommandBufferReserved( int bytes, int reservedBytes ) {
 	}
 
 	cmdList->used += bytes;
+	tr.numCommands++;
 
 	return cmdList->cmds + cmdList->used - bytes;
 }
@@ -232,6 +275,185 @@ void RE_StretchPic ( float x, float y, float w, float h,
 	cmd->t1 = t1;
 	cmd->s2 = s2;
 	cmd->t2 = t2;
+}
+
+
+/*
+=============
+RE_DrawTriangles2D
+
+Copies the triangles into the command buffer, moved by their transform, so
+that the back end only appends them to the tessellator
+=============
+*/
+void RE_DrawTriangles2D( const tris2D_t *tris ) {
+	tris2DCommand_t	*cmd;
+	polyVert2D_t	*verts;
+	int				*indexes;
+	int				i, numIndexes;
+
+	if ( !tr.registered ) {
+		return;
+	}
+	if ( tris->flags & TRIS2D_QUADS ) {
+		if ( tris->numVerts < 4 || tris->numVerts % 4 ) {
+			return;
+		}
+		numIndexes = 0;
+	} else {
+		if ( tris->numVerts < 1 || tris->numIndexes < 3 || tris->numIndexes % 3 ) {
+			return;
+		}
+		numIndexes = tris->numIndexes;
+	}
+	if ( ( tris->flags & TRIS2D_SCISSOR ) && ( tris->scissor[2] <= 0 || tris->scissor[3] <= 0 ) ) {
+		return;
+	}
+
+	// no more than half the command buffer, which a frame's other commands share
+	if ( (size_t)tris->numVerts > MAX_RENDER_COMMANDS / 2 / sizeof( *verts ) ||
+		(size_t)numIndexes > MAX_RENDER_COMMANDS / 2 / sizeof( *indexes ) ||
+		sizeof( *cmd ) + tris->numVerts * sizeof( *verts ) + numIndexes * sizeof( *indexes ) > MAX_RENDER_COMMANDS / 2 ) {
+		ri.Printf( PRINT_WARNING, "RE_DrawTriangles2D: %i vertexes and %i indexes are too many\n",
+			tris->numVerts, numIndexes );
+		return;
+	}
+
+	for ( i = 0; i < numIndexes; i++ ) {
+		if ( (unsigned)tris->indexes[i] >= (unsigned)tris->numVerts ) {
+			ri.Printf( PRINT_WARNING, "RE_DrawTriangles2D: index %i is %i, of %i vertexes\n",
+				i, tris->indexes[i], tris->numVerts );
+			return;
+		}
+	}
+
+	cmd = R_GetCommandBuffer( sizeof( *cmd ) + tris->numVerts * sizeof( *verts ) + numIndexes * sizeof( *indexes ) );
+	if ( !cmd ) {
+		return;
+	}
+	cmd->commandId = RC_TRIS_2D;
+	cmd->shader = R_GetShaderByHandle( tris->hShader );
+	cmd->numVerts = tris->numVerts;
+	cmd->numIndexes = numIndexes;
+	cmd->flags = tris->flags & ( TRIS2D_SCISSOR | TRIS2D_QUADS );
+	Com_Memcpy( cmd->scissor, tris->scissor, sizeof( cmd->scissor ) );
+
+	verts = (polyVert2D_t *)( cmd + 1 );
+	if ( tris->flags & TRIS2D_TRANSFORM ) {
+		const float *m = tris->transform;
+
+		for ( i = 0; i < tris->numVerts; i++ ) {
+			const polyVert2D_t *in = &tris->verts[i];
+
+			verts[i].xy[0] = m[0] * in->xy[0] + m[2] * in->xy[1] + m[4];
+			verts[i].xy[1] = m[1] * in->xy[0] + m[3] * in->xy[1] + m[5];
+			verts[i].st[0] = in->st[0];
+			verts[i].st[1] = in->st[1];
+			Byte4Copy( in->modulate, verts[i].modulate );
+		}
+	} else {
+		Com_Memcpy( verts, tris->verts, tris->numVerts * sizeof( *verts ) );
+	}
+
+	if ( numIndexes ) {
+		indexes = (int *)( verts + tris->numVerts );
+		Com_Memcpy( indexes, tris->indexes, numIndexes * sizeof( *indexes ) );
+	}
+}
+
+
+/*
+=============
+RE_CreateImage2D
+=============
+*/
+qhandle_t RE_CreateImage2D( const char *name, int width, int height, const byte *rgba ) {
+	image_t		*image;
+	byte		*clear = NULL;
+
+	if ( !tr.registered ) {
+		return 0;
+	}
+	if ( !name || !name[0] || strlen( name ) >= MAX_QPATH ) {
+		ri.Printf( PRINT_WARNING, "RE_CreateImage2D: bad name\n" );
+		return 0;
+	}
+	if ( width < 1 || height < 1 || width > glConfig.maxTextureSize || height > glConfig.maxTextureSize ) {
+		ri.Printf( PRINT_WARNING, "RE_CreateImage2D: %s: %i by %i isn't a size this GL takes\n", name, width, height );
+		return 0;
+	}
+	if ( R_FindShaderByName( name ) != tr.defaultShader ) {
+		ri.Printf( PRINT_WARNING, "RE_CreateImage2D: %s is taken\n", name );
+		return 0;
+	}
+
+	if ( !rgba ) {
+		clear = ri.Malloc( width * height * 4 );
+		Com_Memset( clear, 0, width * height * 4 );
+		rgba = clear;
+	}
+
+	// at exactly its size and format, so that its rectangles can be replaced
+	image = R_CreateImage( name, (byte *)rgba, width, height, IMGTYPE_COLORALPHA,
+		IMGFLAG_NO_COMPRESSION | IMGFLAG_NOLIGHTSCALE | IMGFLAG_CLAMPTOEDGE | IMGFLAG_DYNAMIC, GL_RGBA8 );
+
+	if ( clear ) {
+		ri.Free( clear );
+	}
+
+	return RE_RegisterShaderFromImage( name, LIGHTMAP_2D, image, qfalse );
+}
+
+
+/*
+=============
+RE_UpdateImage2D
+
+A small rectangle waits in the command buffer, in its place among the
+draws. A large one draws what waits, and is uploaded at once.
+=============
+*/
+void RE_UpdateImage2D( qhandle_t hShader, int x, int y, int width, int height, const byte *rgba ) {
+	updateImageCommand_t	*cmd;
+	shader_t	*shader;
+	image_t		*image = NULL;
+	int			bytes;
+
+	if ( !tr.registered || !rgba ) {
+		return;
+	}
+
+	shader = R_GetShaderByHandle( hShader );
+	if ( shader->stages[0] ) {
+		image = shader->stages[0]->bundle[0].image[0];
+	}
+	if ( !image || !( image->flags & IMGFLAG_DYNAMIC ) ) {
+		ri.Printf( PRINT_WARNING, "RE_UpdateImage2D: %s isn't an image RE_CreateImage2D made\n", shader->name );
+		return;
+	}
+	if ( x < 0 || y < 0 || width < 1 || height < 1 || x + width > image->width || y + height > image->height ) {
+		ri.Printf( PRINT_WARNING, "RE_UpdateImage2D: %s: %i by %i at %i, %i is outside it\n",
+			shader->name, width, height, x, y );
+		return;
+	}
+
+	bytes = width * height * 4;
+	if ( bytes <= MAX_RENDER_COMMANDS / 8 ) {
+		cmd = R_GetCommandBuffer( sizeof( *cmd ) + bytes );
+		if ( cmd ) {
+			cmd->commandId = RC_UPDATE_IMAGE;
+			cmd->image = image;
+			cmd->x = x;
+			cmd->y = y;
+			cmd->width = width;
+			cmd->height = height;
+			Com_Memcpy( cmd + 1, rgba, bytes );
+			return;
+		}
+	}
+
+	R_IssuePendingRenderCommands();
+	RB_UpdateImage( image, x, y, width, height, rgba );
 }
 
 #define MODE_RED_CYAN	1
@@ -473,6 +695,7 @@ void RE_EndFrame( int *frontEndMsec, int *backEndMsec ) {
 	cmd->commandId = RC_SWAP_BUFFERS;
 
 	R_IssueRenderCommands( qtrue );
+	R_Stats2D();
 
 	R_InitNextFrame();
 

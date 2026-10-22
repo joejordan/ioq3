@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_types.h"
 
-#define	REF_API_VERSION		11
+#define	REF_API_VERSION		12
 
 // the window's size after a crash (r_mode), whatever the player chose
 #define R_MODE_FALLBACK		3	// 640 * 480
@@ -122,6 +122,23 @@ typedef struct {
 	// renderer can't wait for it after the swap (WebGL), the client skips
 	// a frame instead while the last is still being drawn. May be NULL.
 	qboolean (*FrameReady)( void );
+
+	// Draws indexed triangles in 2D, in window pixels, with one shader and
+	// a color and texture coordinates at each vertex, optionally inside a
+	// scissor rectangle and moved by an affine transform (tris2D_t). The
+	// triangles are copied, so the arrays may be reused at once.
+	void	(*DrawTriangles2D)( const tris2D_t *tris );
+
+	// Makes an image of RGBA pixels, width by height (NULL for transparent
+	// black), and a 2D shader drawing it, whose handle is returned. Its
+	// pixels can be replaced afterwards, as a glyph atlas's are. Like a
+	// registered shader, it lasts until the renderer restarts.
+	qhandle_t (*CreateImage2D)( const char *name, int width, int height, const byte *rgba );
+
+	// Replaces a rectangle of an image CreateImage2D made, from width by
+	// height RGBA pixels. What is drawn before the call shows the old
+	// pixels, and what is drawn after it the new.
+	void	(*UpdateImage2D)( qhandle_t hShader, int x, int y, int width, int height, const byte *rgba );
 } refexport_t;
 
 //

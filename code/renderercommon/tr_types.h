@@ -71,6 +71,35 @@ typedef struct poly_s {
 	polyVert_t			*verts;
 } poly_t;
 
+// a vertex of 2D triangles (DrawTriangles2D): where it is in window pixels,
+// x right and y down from the top left, its texture coordinates and color
+typedef struct {
+	float		xy[2];
+	float		st[2];
+	byte		modulate[4];
+} polyVert2D_t;
+
+#define TRIS2D_SCISSOR		0x0001	// draw only inside scissor
+#define TRIS2D_TRANSFORM	0x0002	// move the vertexes by transform first
+#define TRIS2D_QUADS		0x0004	// no indexes: each four vertexes a quad, clockwise
+
+// Indexed triangles drawn in 2D with one shader. The shader's stages color
+// and texture them as they would a picture: a shader made from an image
+// (RegisterShaderNoMip, CreateImage2D) multiplies the image by the vertex
+// colors and blends it by its alpha.
+typedef struct {
+	qhandle_t			hShader;		// 0 draws the default shader
+	const polyVert2D_t	*verts;
+	int					numVerts;
+	const int			*indexes;		// three a triangle, each below numVerts;
+	int					numIndexes;		// none with TRIS2D_QUADS
+	int					flags;			// TRIS2D_*
+	int					scissor[4];		// x, y, width and height in window pixels
+	// an affine transform, in the order of the canvas' setTransform:
+	// x' = a x + c y + e, y' = b x + d y + f, for a b c d e f
+	float				transform[6];
+} tris2D_t;
+
 typedef enum {
 	RT_MODEL,
 	RT_POLY,

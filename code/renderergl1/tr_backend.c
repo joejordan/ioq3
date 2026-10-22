@@ -21,6 +21,20 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 #include "tr_local.h"
 
+#include <time.h>
+
+// r_stats2D's clock
+int64_t RB_Nanoseconds( void ) {
+#ifdef _WIN32
+	return (int64_t)ri.Milliseconds() * 1000000;
+#else
+	struct timespec ts;
+
+	clock_gettime( CLOCK_MONOTONIC, &ts );
+	return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+#endif
+}
+
 backEndData_t	*backEndData;
 backEndState_t	backEnd;
 
@@ -701,6 +715,7 @@ void	RB_SetGL2D (void) {
 	// set 2D virtual screen size
 	qglViewport( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
 	qglScissor( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
+	backEnd.scissor2D = qfalse;
 	qglMatrixMode(GL_PROJECTION);
     qglLoadIdentity ();
 	qglOrtho (0, glConfig.vidWidth, glConfig.vidHeight, 0, 0, 1);
@@ -840,6 +855,7 @@ const void *RB_StretchPic ( const void *data ) {
 	if ( !backEnd.projection2D ) {
 		RB_SetGL2D();
 	}
+	RB_Scissor2D( NULL );
 
 	shader = cmd->shader;
 	// an empty surface may be left from before: RB_EndSurface keeps
@@ -900,6 +916,165 @@ const void *RB_StretchPic ( const void *data ) {
 	tess.texCoords[ numVerts + 3 ][0][1] = cmd->t2;
 
 	return (const void *)(cmd + 1);
+}
+
+
+/*
+=============
+RB_Scissor2D
+
+Keeps 2D drawing inside rect: x, y, width and height in window pixels, y
+down from the top; or with NULL, lets it draw anywhere. What waits to be
+drawn is drawn first, inside the rectangle it was given.
+=============
+*/
+void RB_Scissor2D( const int *rect ) {
+	if ( rect ) {
+		if ( backEnd.scissor2D && !memcmp( rect, backEnd.scissorRect2D, sizeof( backEnd.scissorRect2D ) ) ) {
+			return;
+		}
+	} else if ( !backEnd.scissor2D ) {
+		return;
+	}
+
+	if ( tess.numIndexes ) {
+		RB_EndSurface();
+	}
+
+	if ( rect ) {
+		// GL's rows go up
+		qglScissor( rect[0], glConfig.vidHeight - rect[1] - rect[3], rect[2], rect[3] );
+		Com_Memcpy( backEnd.scissorRect2D, rect, sizeof( backEnd.scissorRect2D ) );
+		backEnd.scissor2D = qtrue;
+	} else {
+		qglScissor( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
+		backEnd.scissor2D = qfalse;
+	}
+}
+
+
+static ID_INLINE void RB_Vertex2D( int n, const polyVert2D_t *v ) {
+	tess.xyz[n][0] = v->xy[0];
+	tess.xyz[n][1] = v->xy[1];
+	tess.xyz[n][2] = 0;
+	tess.texCoords[n][0][0] = v->st[0];
+	tess.texCoords[n][0][1] = v->st[1];
+	Byte4Copy( v->modulate, tess.vertexColors[n] );
+}
+
+
+/*
+=============
+RB_Tris2D
+
+Appends 2D triangles to the tessellator, which draws them with the
+shader's stages as it draws a picture's quad
+=============
+*/
+static const void *RB_Tris2D( const void *data ) {
+	const tris2DCommand_t	*cmd = (const tris2DCommand_t *)data;
+	const polyVert2D_t		*verts = (const polyVert2D_t *)( cmd + 1 );
+	const int				*indexes = (const int *)( verts + cmd->numVerts );
+	int		i, j, first;
+
+	if ( !backEnd.projection2D ) {
+		RB_SetGL2D();
+	}
+	RB_Scissor2D( ( cmd->flags & TRIS2D_SCISSOR ) ? cmd->scissor : NULL );
+
+	if ( cmd->shader != tess.shader || !tess.numIndexes ) {
+		if ( tess.numIndexes ) {
+			RB_EndSurface();
+		}
+		backEnd.currentEntity = &backEnd.entity2D;
+		RB_BeginSurface( cmd->shader, 0 );
+	}
+
+	if ( cmd->flags & TRIS2D_QUADS ) {
+		// the corners in the order RB_StretchPic gives them
+		for ( i = 0; i < cmd->numVerts; i += 4 ) {
+			RB_CHECKOVERFLOW( 4, 6 );
+			first = tess.numVertexes;
+
+			for ( j = 0; j < 4; j++ ) {
+				RB_Vertex2D( first + j, &verts[i + j] );
+			}
+			tess.indexes[ tess.numIndexes + 0 ] = first + 3;
+			tess.indexes[ tess.numIndexes + 1 ] = first + 0;
+			tess.indexes[ tess.numIndexes + 2 ] = first + 2;
+			tess.indexes[ tess.numIndexes + 3 ] = first + 2;
+			tess.indexes[ tess.numIndexes + 4 ] = first + 0;
+			tess.indexes[ tess.numIndexes + 5 ] = first + 1;
+
+			tess.numVertexes += 4;
+			tess.numIndexes += 6;
+		}
+	} else if ( cmd->numVerts < SHADER_MAX_VERTEXES && cmd->numIndexes < SHADER_MAX_INDEXES ) {
+		RB_CHECKOVERFLOW( cmd->numVerts, cmd->numIndexes );
+		first = tess.numVertexes;
+
+		for ( i = 0; i < cmd->numVerts; i++ ) {
+			RB_Vertex2D( first + i, &verts[i] );
+		}
+		for ( i = 0; i < cmd->numIndexes; i++ ) {
+			tess.indexes[ tess.numIndexes + i ] = first + indexes[i];
+		}
+
+		tess.numVertexes += cmd->numVerts;
+		tess.numIndexes += cmd->numIndexes;
+	} else {
+		// more than the tessellator holds: a triangle at a time, each vertex
+		// copied once while the tessellator holds it
+		static int	remap[MAX_TRIS2D_VERTS], remapPass[MAX_TRIS2D_VERTS], pass;
+
+		pass++;
+		for ( i = 0; i < cmd->numIndexes; i += 3 ) {
+			if ( tess.numVertexes + 3 >= SHADER_MAX_VERTEXES || tess.numIndexes + 3 >= SHADER_MAX_INDEXES ) {
+				RB_CheckOverflow( 3, 3 );
+				pass++;
+			}
+			for ( j = 0; j < 3; j++ ) {
+				int v = indexes[i + j];
+
+				if ( remapPass[v] != pass ) {
+					remapPass[v] = pass;
+					remap[v] = tess.numVertexes;
+					RB_Vertex2D( tess.numVertexes++, &verts[v] );
+				}
+				tess.indexes[ tess.numIndexes++ ] = remap[v];
+			}
+		}
+	}
+
+	return (const void *)( indexes + cmd->numIndexes );
+}
+
+
+/*
+=============
+RB_UpdateImage
+
+Replaces a rectangle of an image RE_CreateImage2D made
+=============
+*/
+void RB_UpdateImage( image_t *image, int x, int y, int width, int height, const byte *rgba ) {
+	// what waits to be drawn was given the old pixels
+	if ( tess.numIndexes ) {
+		RB_EndSurface();
+	}
+
+	GL_Bind( image );
+	qglTexSubImage2D( GL_TEXTURE_2D, 0, x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba );
+}
+
+
+static const void *RB_UpdateImageCmd( const void *data ) {
+	const updateImageCommand_t	*cmd = (const updateImageCommand_t *)data;
+	const byte	*pixels = (const byte *)( cmd + 1 );
+
+	RB_UpdateImage( cmd->image, cmd->x, cmd->y, cmd->width, cmd->height, pixels );
+
+	return (const void *)( pixels + cmd->width * cmd->height * 4 );
 }
 
 
@@ -1223,11 +1398,29 @@ RB_ExecuteRenderCommands
 */
 void RB_ExecuteRenderCommands( const void *data ) {
 	int		t1, t2;
+	int64_t	start = RB_Nanoseconds(), span2D = 0;
 
 	t1 = ri.Milliseconds ();
 
 	while ( 1 ) {
 		data = PADP(data, sizeof(void *));
+
+		// r_stats2D: the time from a 2D command to the next of another
+		// kind, with the 2D drawn
+		if ( r_stats2D->integer ) {
+			int id = *(const int *)data;
+			qboolean is2D = id == RC_SET_COLOR || id == RC_STRETCH_PIC || id == RC_TRIS_2D || id == RC_UPDATE_IMAGE;
+
+			if ( is2D && !span2D ) {
+				span2D = RB_Nanoseconds();
+			} else if ( !is2D && span2D ) {
+				if ( tess.numIndexes && backEnd.projection2D ) {
+					RB_EndSurface();
+				}
+				backEnd.ns2D += RB_Nanoseconds() - span2D;
+				span2D = 0;
+			}
+		}
 
 		switch ( *(const int *)data ) {
 		case RC_SET_COLOR:
@@ -1236,6 +1429,12 @@ void RB_ExecuteRenderCommands( const void *data ) {
 		case RC_STRETCH_PIC:
 			data = RB_StretchPic( data );
 			break;
+		case RC_TRIS_2D:
+			data = RB_Tris2D( data );
+			break;
+		case RC_UPDATE_IMAGE:
+			data = RB_UpdateImageCmd( data );
+			break;
 		case RC_DRAW_SURFS:
 			data = RB_DrawSurfs( data );
 			break;
@@ -1243,6 +1442,16 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			data = RB_DrawBuffer( data );
 			break;
 		case RC_SWAP_BUFFERS:
+			// r_stats2D: the frame's drawing, without the swap's wait
+			if ( tess.numIndexes ) {
+				RB_EndSurface();
+			}
+			if ( start ) {
+				backEnd.nsFrame += RB_Nanoseconds() - start;
+				start = 0;
+			}
+			// the next frame's clears reach the whole window
+			RB_Scissor2D( NULL );
 			data = RB_SwapBuffers( data );
 			break;
 		case RC_SCREENSHOT:
@@ -1260,6 +1469,9 @@ void RB_ExecuteRenderCommands( const void *data ) {
 		case RC_END_OF_LIST:
 		default:
 			// stop rendering
+			if ( start ) {
+				backEnd.nsFrame += RB_Nanoseconds() - start;
+			}
 			t2 = ri.Milliseconds ();
 			backEnd.pc.msec = t2 - t1;
 			return;

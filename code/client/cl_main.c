@@ -4209,6 +4209,9 @@ void CL_InitRenderer( void ) {
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
 	cls.whiteShader = re.RegisterShader( "white" );
 	cls.consoleShader = re.RegisterShader( "console" );
+
+	// the images the 2D test made are gone
+	SCR_RendererStarted();
 }
 
 /*
