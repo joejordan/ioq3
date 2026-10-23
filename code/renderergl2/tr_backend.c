@@ -727,7 +727,7 @@ void RE_StretchRaw (int x, int y, int w, int h, int cols, int rows, const byte *
 
 	if (glRefConfig.framebufferObject)
 	{
-		FBO_Bind(tr.renderFbo);
+		FBO_Bind(RB_Target2D());
 	}
 
 	RB_SetGL2D();
@@ -836,7 +836,7 @@ const void *RB_StretchPic ( const void *data ) {
 	cmd = (const stretchPicCommand_t *)data;
 
 	if (glRefConfig.framebufferObject)
-		FBO_Bind(tr.renderFbo);
+		FBO_Bind(RB_Target2D());
 
 	RB_SetGL2D();
 	RB_Scissor2D( NULL );
@@ -981,7 +981,7 @@ static const void *RB_Tris2D( const void *data ) {
 	int		i, j, first;
 
 	if (glRefConfig.framebufferObject)
-		FBO_Bind(tr.renderFbo);
+		FBO_Bind(RB_Target2D());
 
 	RB_SetGL2D();
 	RB_Scissor2D( ( cmd->flags & TRIS2D_SCISSOR ) ? cmd->scissor : NULL );
@@ -2223,6 +2223,9 @@ void RB_ExecuteRenderCommands( const void *data ) {
 		case RC_UPDATE_TEXTURE_2D:
 			data = RB_UpdateTexture2D( data );
 			break;
+		case RC_LAYER_2D:
+			data = RB_Layer2D( data );
+			break;
 		case RC_DRAW_SURFS:
 			data = RB_DrawSurfs( data );
 			break;
@@ -2240,6 +2243,7 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			}
 			// the next frame's clears and the present reach the whole target
 			RB_Scissor2D( NULL );
+			RB_EndFrame2D();
 			data = RB_SwapBuffers( data );
 			break;
 		case RC_SCREENSHOT:
