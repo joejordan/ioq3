@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_types.h"
 
-#define	REF_API_VERSION		12
+#define	REF_API_VERSION		13
 
 // the window's size after a crash (r_mode), whatever the player chose
 #define R_MODE_FALLBACK		3	// 640 * 480
@@ -150,6 +150,40 @@ typedef struct {
 	// The size of the image a shader's first stage draws, as it was made or
 	// loaded; qfalse when it has none
 	qboolean (*GetShaderImageSize)( qhandle_t hShader, int *width, int *height );
+
+	// Retained 2D, for a UI that keeps what it draws. Handles are numbered
+	// from 1, 0 is none, and all of them are gone when the renderer
+	// restarts. Deleting one takes effect in its place among the frame's
+	// draws, so what was drawn with it before still draws.
+
+	// A UI texture: width by height pixels in format (NULL for transparent
+	// black), at exactly that size, without mipmaps, light scaling or
+	// compression, clamped at its edges; 0 when there's no room for it.
+	// Drawn with TRIS2D_TEXTURE2D
+	int		(*CreateTexture2D)( int width, int height, tex2DFormat_t format, const byte *pixels );
+	// replaces a rectangle of it, with pixels in its format, as
+	// UpdateImage2D does an image's
+	void	(*UpdateTexture2D)( int texture, int x, int y, int width, int height, const byte *pixels );
+	void	(*DeleteTexture2D)( int texture );
+
+	// Geometry kept by the renderer: the vertexes and indexes are copied,
+	// and drawn again with any state, as often as asked, for the cost of a
+	// small command; 0 when it's malformed or there's no room for it
+	// (caps2D_t's maxGeometryVerts)
+	int		(*CreateGeometry2D)( const polyVert2D_t *verts, int numVerts, const int *indexes, int numIndexes );
+	void	(*DrawGeometry2D)( int geometry, const draw2DState_t *state );
+	void	(*DeleteGeometry2D)( int geometry );
+
+	// Changes the clip mask by op (clipMaskOp_t), with the geometry drawn
+	// as state places it, but not seen. Without caps2D_t's clipMask, does
+	// nothing, and TRIS2D_CLIPMASK clips nothing
+	void	(*SetClipMask2D)( clipMaskOp_t op, int geometry, const draw2DState_t *state );
+
+	// A paint (paint2D_t) for TRIS2D_PAINT; 0 when it's malformed, there's
+	// no room for it, or the renderer doesn't draw its kind (caps2D_t's
+	// paints)
+	int		(*CreatePaint2D)( const paint2D_t *paint );
+	void	(*DeletePaint2D)( int paint );
 } refexport_t;
 
 //

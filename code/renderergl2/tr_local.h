@@ -1636,6 +1636,7 @@ typedef struct {
 	//
 	shaderProgram_t genericShader[GENERICDEF_COUNT];
 	shaderProgram_t textureColorShader;
+	shaderProgram_t ui2dShader;
 	shaderProgram_t fogShader[FOGDEF_COUNT];
 	shaderProgram_t dlightShader[DLIGHTDEF_COUNT];
 	shaderProgram_t lightallShader[LIGHTDEF_COUNT];
@@ -2548,7 +2549,11 @@ typedef enum {
 	RC_POSTPROCESS,
 	RC_EXPORT_CUBEMAPS,
 	RC_TRIS_2D,
-	RC_UPDATE_IMAGE
+	RC_UPDATE_IMAGE,
+	RC_DRAW_2D,
+	RC_CLIPMASK_2D,
+	RC_DELETE_2D,
+	RC_UPDATE_TEXTURE_2D
 } renderCommand_t;
 
 
@@ -2595,6 +2600,15 @@ void RE_GetCaps2D( caps2D_t *caps );
 qboolean RE_GetShaderImageSize( qhandle_t hShader, int *width, int *height );
 void R_UpdateImage( image_t *image, int x, int y, int width, int height, const byte *rgba );
 void RB_UpdateImage( image_t *image, int x, int y, int width, int height, const byte *rgba );
+void RB_SetGL2D( void );
+void RB_Scissor2D( const int *rect );
+
+// tr_ui2d.c: the retained 2D (renderercommon/tr_ui2d_common.c)
+void R_GetCaps2DRetained( caps2D_t *caps );
+qboolean R_Paints2DAvailable( void );
+void R_InitUI2D( void );
+const void *RB_Draw2D( const void *data );
+
 void RE_BeginFrame( stereoFrame_t stereoFrame );
 void RE_EndFrame( int *frontEndMsec, int *backEndMsec );
 void RE_SaveJPG(char * filename, int quality, int image_width, int image_height,
