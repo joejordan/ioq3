@@ -44,6 +44,14 @@ int CL_ExtKeyCatcher( void ) {
 	return Key_GetCatcher( );
 }
 
+// Com_Init started the renderer before the extensions, which get its
+// rendererStarted now
+void CL_ExtensionsStarted( void ) {
+	if ( cls.rendererStarted ) {
+		Hooks_RendererStarted( );
+	}
+}
+
 // the platform reads it each frame (IN_Frame)
 void CL_ExtSetPointerMode( qboolean cursor ) {
 	cls.extCursor = cursor;

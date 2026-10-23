@@ -1602,6 +1602,9 @@ void CL_MouseEvent( int dx, int dy, int time );
 // for engine extensions (hooks.h)
 void CL_TextEditingEvent( const char *utf8, int cursor, int selection );
 void CL_PointerEvent( float x, float y );
+// the engine extensions have started (Com_InitExtensions), after the
+// renderer did
+void CL_ExtensionsStarted( void );
 
 void CL_JoystickEvent( int axis, int value, int time );
 
