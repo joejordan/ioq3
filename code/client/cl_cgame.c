@@ -890,7 +890,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case COM_TRAP_R_CREATEIMAGE2D:
 	case COM_TRAP_R_UPDATEIMAGE2D:
 	case COM_TRAP_R_DRAWTRIANGLES2D:
-		return SCR_Module2DCall( &cls.cgame2D, "cgame", args );
+		return SCR_Module2DCall( EXT_MODULE_CGAME, args );
 
 	default: {
 		intptr_t	result;

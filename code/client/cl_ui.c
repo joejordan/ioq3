@@ -1285,7 +1285,7 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 	case COM_TRAP_R_CREATEIMAGE2D:
 	case COM_TRAP_R_UPDATEIMAGE2D:
 	case COM_TRAP_R_DRAWTRIANGLES2D:
-		return SCR_Module2DCall( &cls.ui2D, "ui", args );
+		return SCR_Module2DCall( EXT_MODULE_UI, args );
 
 	default: {
 		intptr_t	result;

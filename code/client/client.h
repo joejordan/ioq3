@@ -727,7 +727,9 @@ void	SCR_ResetModule2D( module2D_t *m );
 void	SCR_ModuleSetColor( module2D_t *m, const float *rgba );
 void	SCR_ModuleStretchPic( const module2D_t *m, float x, float y, float w, float h,
 			float s1, float t1, float s2, float t2, qhandle_t hShader );
-intptr_t	SCR_Module2DCall( module2D_t *m, const char *module, intptr_t *args );
+intptr_t	SCR_Module2DCall( extModule_t ext, intptr_t *args );
+// a cgame's or ui's 2D state (cl_ext.c)
+module2D_t	*CL_Module2D( extModule_t ext );
 
 
 //

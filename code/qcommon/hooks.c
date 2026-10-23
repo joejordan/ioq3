@@ -448,3 +448,7 @@ qboolean Hooks_ModuleRender( extModule_t module, const struct extRenderCall_s *c
 	HOOKS_OFFER( taker, moduleRender, ( module, call ) );
 	return taker != 0;
 }
+
+void Hooks_ModuleRenderSeen( extModule_t module, const struct extRenderCall_s *call ) {
+	HOOKS_CALL( moduleRender, ( module, call ) );
+}

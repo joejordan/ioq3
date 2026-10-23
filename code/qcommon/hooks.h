@@ -73,7 +73,8 @@ typedef enum {
 	EXT_ASSET_SHADER_NOMIP,
 	EXT_ASSET_MODEL,
 	EXT_ASSET_SKIN,
-	EXT_ASSET_FONT
+	EXT_ASSET_FONT,
+	EXT_ASSET_IMAGE2D		// an image it made (trap_R_CreateImage2D_OF), named as the engine names it
 } extAssetKind_t;
 
 // a game module's renderer call (moduleRender), defined in client/cl_ext.h
@@ -246,9 +247,10 @@ typedef struct {
 	// The modules' renderer calls, as they make them. moduleAsset tells of
 	// each shader, model, skin and font a module registers, with the handle
 	// the renderer gave it (0 for none) and, for a font, the glyphs the
-	// renderer filled in. moduleRender sees each 2D and scene call
-	// (cl_ext.h's extRenderKind_t) before the renderer does, and returns
-	// qtrue to take it: the renderer then never gets it
+	// renderer filled in; and of each image it makes, each time, the same
+	// one again when it's given back. moduleRender sees each 2D and scene
+	// call (cl_ext.h's extRenderKind_t) before the renderer does, and
+	// returns qtrue to take it: the renderer then never gets it
 	void		(*moduleAsset)( extModule_t module, extAssetKind_t kind, const char *name, qhandle_t handle,
 				const fontInfo_t *font );
 	qboolean	(*moduleRender)( extModule_t module, const struct extRenderCall_s *call );
@@ -313,6 +315,8 @@ qboolean	Hooks_WantModuleRender( void );
 void	Hooks_ModuleAsset( extModule_t module, extAssetKind_t kind, const char *name, qhandle_t handle,
 		const fontInfo_t *font );
 qboolean	Hooks_ModuleRender( extModule_t module, const struct extRenderCall_s *call );
+// a call each extension sees and none takes, whatever its moduleRender returns
+void	Hooks_ModuleRenderSeen( extModule_t module, const struct extRenderCall_s *call );
 
 // The client, for extensions, in a client build only (client/cl_main.c).
 // Each reads the connection as it stands now.

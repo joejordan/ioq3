@@ -125,7 +125,7 @@ void CL_ModuleRegisterFont( extModule_t module, const char *name, int pointSize,
 }
 
 // a module's own 2D state, its clip region's (cl_scrn.c)
-static module2D_t *CL_Module2D( extModule_t module ) {
+module2D_t *CL_Module2D( extModule_t module ) {
 	return module == EXT_MODULE_CGAME ? &cls.cgame2D : &cls.ui2D;
 }
 
@@ -155,6 +155,8 @@ void CL_ModuleSetColor( extModule_t module, const float *color ) {
 
 void CL_ModuleDrawStretchPic( extModule_t module, float x, float y, float w, float h, float s1, float t1,
 	float s2, float t2, qhandle_t shader ) {
+	module2D_t	*m = CL_Module2D( module );
+
 	if ( Hooks_WantModuleRender( ) ) {
 		extRenderCall_t	call = { EXT_RENDER_STRETCHPIC };
 
@@ -167,11 +169,12 @@ void CL_ModuleDrawStretchPic( extModule_t module, float x, float y, float w, flo
 		call.s2 = s2;
 		call.t2 = t2;
 		call.shader = shader;
+		call.clip = m->clipped ? m->clip : NULL;
 		if ( Hooks_ModuleRender( module, &call ) ) {
 			return;
 		}
 	}
-	SCR_ModuleStretchPic( CL_Module2D( module ), x, y, w, h, s1, t1, s2, t2, shader );
+	SCR_ModuleStretchPic( m, x, y, w, h, s1, t1, s2, t2, shader );
 }
 
 void CL_ModuleClearScene( extModule_t module ) {

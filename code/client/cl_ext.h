@@ -37,15 +37,20 @@ const glconfig_t	*CL_ExtGlconfig( void );
 
 // A game module's renderer call, for the moduleRender hook: kind says which,
 // and which fields hold its arguments. Pointers are the module's, valid
-// during the call; a QVM's were checked as every syscall's are
+// during the call; a QVM's were checked as every syscall's are. Values are
+// as the module gave them, which the renderer checks: a batch's indexes, an
+// update's position
 typedef enum {
 	EXT_RENDER_SETCOLOR,	// color: red, green, blue and alpha, or NULL for white
-	EXT_RENDER_STRETCHPIC,	// x, y, w, h, s1, t1, s2, t2, shader
+	EXT_RENDER_STRETCHPIC,	// x, y, w, h, s1, t1, s2, t2, shader, and clip, the module's clip region or NULL
 	EXT_RENDER_CLEARSCENE,	// none
 	EXT_RENDER_REFENTITY,	// entity
 	EXT_RENDER_POLYS,	// shader, verts, numVerts each of numPolys
 	EXT_RENDER_LIGHT,	// origin, intensity, r, g, b, additive
-	EXT_RENDER_SCENE	// refdef
+	EXT_RENDER_SCENE,	// refdef
+	EXT_RENDER_TRIANGLES,	// tris, a batch (trap_R_DrawTriangles2D_OF), already scissored by clip, the module's clip region or NULL
+	EXT_RENDER_CLIP_REGION,	// clip, the module's new clip region or NULL (trap_R_SetClipRegion_OF), seen and never taken
+	EXT_RENDER_UPDATE_IMAGE	// image, area and pixels (trap_R_UpdateImage2D_OF)
 } extRenderKind_t;
 
 typedef struct extRenderCall_s {
@@ -60,6 +65,11 @@ typedef struct extRenderCall_s {
 	float			intensity, r, g, b;
 	qboolean		additive;
 	const refdef_t		*refdef;
+	const tris2D_t		*tris;
+	const int		*clip;		// x, y, width and height
+	qhandle_t		image;
+	int			area[4];	// x, y, width and height
+	const byte		*pixels;
 } extRenderCall_t;
 
 #endif
