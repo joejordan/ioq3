@@ -1850,7 +1850,15 @@ void RB_EndSurface( void ) {
 	//
 	// call off to shader specific tess end function
 	//
-	tess.currentStageIteratorFunc();
+	if ( r_stats2D->integer && backEnd.projection2D ) {
+		int64_t start = RB_Nanoseconds();
+
+		tess.currentStageIteratorFunc();
+		backEnd.nsDraw2D += RB_Nanoseconds() - start;
+		backEnd.numDraws2D++;
+	} else {
+		tess.currentStageIteratorFunc();
+	}
 
 	//
 	// draw debugging stuff

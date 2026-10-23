@@ -883,7 +883,17 @@ image_t *R_CreateImage( const char *name, byte *pic, int width, int height,
 
 	GL_Bind(image);
 
-	Upload32( (unsigned *)pic, image->width, image->height, 
+	if ( internalFormat ) {
+		// as it is, in the format asked, for an image whose rectangles are
+		// replaced later (RE_UpdateImage2D)
+		qglTexImage2D( GL_TEXTURE_2D, 0, internalFormat, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pic );
+		qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+		qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		image->internalFormat = internalFormat;
+		image->uploadWidth = width;
+		image->uploadHeight = height;
+	} else {
+		Upload32( (unsigned *)pic, image->width, image->height,
 								image->flags & IMGFLAG_MIPMAP,
 								image->flags & IMGFLAG_PICMIP,
 								isLightmap,
@@ -891,6 +901,7 @@ image_t *R_CreateImage( const char *name, byte *pic, int width, int height,
 								&image->internalFormat,
 								&image->uploadWidth,
 								&image->uploadHeight );
+	}
 
 	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, glWrapClampMode );
 	qglTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, glWrapClampMode );
