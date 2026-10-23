@@ -753,6 +753,7 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 			// refresh to update the time
 			VM_Call( uivm, UI_REFRESH, cls.realtime );
 			VM_Call( uivm, UI_DRAW_CONNECT_SCREEN, qfalse );
+			Hooks_Draw( EXT_DRAW_GAME, stereoFrame );
 			break;
 		case CA_LOADING:
 		case CA_PRIMED:
@@ -764,10 +765,13 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 			// refresh to update the time
 			VM_Call( uivm, UI_REFRESH, cls.realtime );
 			VM_Call( uivm, UI_DRAW_CONNECT_SCREEN, qtrue );
+			Hooks_Draw( EXT_DRAW_GAME, stereoFrame );
 			break;
 		case CA_ACTIVE:
 			// always supply STEREO_CENTER as vieworg offset is now done by the engine.
 			CL_CGameRendering(stereoFrame);
+			// under the recording line and the voice meter
+			Hooks_Draw( EXT_DRAW_GAME, stereoFrame );
 			SCR_DrawDemoRecording();
 #ifdef USE_VOIP
 			SCR_DrawVoipMeter();
@@ -780,9 +784,11 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 	if ( Key_GetCatcher( ) & KEYCATCH_UI && uivm ) {
 		VM_Call( uivm, UI_REFRESH, cls.realtime );
 	}
+	Hooks_Draw( EXT_DRAW_MENU, stereoFrame );
 
 	// console draws next
 	Con_DrawConsole ();
+	Hooks_Draw( EXT_DRAW_TOP, stereoFrame );
 
 	// debug graph can be drawn on top of anything
 	if ( cl_debuggraph->integer || cl_timegraph->integer || cl_debugMove->integer ) {

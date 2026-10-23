@@ -2724,6 +2724,17 @@ int Com_EventLoop( void ) {
 				Cbuf_AddText( (char *)ev.evPtr );
 				Cbuf_AddText( "\n" );
 			break;
+			case SE_TEXT_EDITING:
+				CL_TextEditingEvent( ev.evPtr ? (char *)ev.evPtr : "", ev.evValue, ev.evValue2 );
+			break;
+			case SE_POINTER: {
+				floatint_t x, y;
+
+				x.i = ev.evValue;
+				y.i = ev.evValue2;
+				CL_PointerEvent( x.f, y.f );
+			}
+			break;
 			default:
 				Com_Error( ERR_FATAL, "Com_EventLoop: bad event type %i", ev.evType );
 			break;
