@@ -86,8 +86,10 @@ typedef struct {
 
 	// Once, as the program starts: after the network, and on a dedicated
 	// server once its port is open and its PID file written; never under
-	// --check. Register cvars and commands here. Returns whether the
-	// extension stays active: one that returns qfalse gets no other call.
+	// --check. A client's renderer has started, its sound and ui not yet,
+	// so the ui's first start finds the extensions' calls. Register cvars
+	// and commands here. Returns whether the extension stays active: one
+	// that returns qfalse gets no other call.
 	// An error raised here stops the program, as one in Com_Init does.
 	qboolean	(*init)( void );
 

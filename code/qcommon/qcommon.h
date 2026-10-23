@@ -1108,6 +1108,7 @@ void		Log_Frame( void );
 #include "exttokens.h"
 // Hooks_Init after Com_Init, where an error stops the program
 void		Com_InitExtensions( void );
+void		Com_StartClient( void );
 
 fileHandle_t	FS_FCreateOpenPipeFile( const char *filename );
 // will properly create any needed paths and deal with seperater character issues
