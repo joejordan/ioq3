@@ -4822,6 +4822,7 @@ void Com_InitExtensions( void ) {
 		Sys_Error( "Error starting the engine extensions" );
 	}
 	Hooks_Init();
+	CL_ExtensionsStarted();
 }
 
 /*
