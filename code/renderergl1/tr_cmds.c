@@ -309,6 +309,7 @@ RE_GetCaps2D
 void RE_GetCaps2D( caps2D_t *caps ) {
 	Com_Memset( caps, 0, sizeof( *caps ) );
 	caps->maxTextureSize = glConfig.maxTextureSize;
+	R_GetCaps2DRetained( caps );
 }
 
 
@@ -345,6 +346,10 @@ void RE_DrawTriangles2D( const tris2D_t *tris ) {
 	int				i, numIndexes;
 
 	if ( !tr.registered ) {
+		return;
+	}
+	if ( tris->state.flags & TRIS2D_RETAINED_FLAGS ) {
+		R_DrawTriangles2DState( tris );
 		return;
 	}
 	if ( tris->state.flags & ~( TRIS2D_SCISSOR | TRIS2D_TRANSFORM | TRIS2D_QUADS ) ) {

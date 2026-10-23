@@ -2211,6 +2211,18 @@ void RB_ExecuteRenderCommands( const void *data ) {
 		case RC_UPDATE_IMAGE:
 			data = RB_UpdateImageCmd( data );
 			break;
+		case RC_DRAW_2D:
+			data = RB_Draw2D( data );
+			break;
+		case RC_CLIPMASK_2D:
+			data = RB_ClipMask2D( data );
+			break;
+		case RC_DELETE_2D:
+			data = RB_Delete2D( data );
+			break;
+		case RC_UPDATE_TEXTURE_2D:
+			data = RB_UpdateTexture2D( data );
+			break;
 		case RC_DRAW_SURFS:
 			data = RB_DrawSurfs( data );
 			break;

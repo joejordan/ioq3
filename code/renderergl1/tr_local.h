@@ -1599,7 +1599,11 @@ typedef enum {
 	RC_COLORMASK,
 	RC_CLEARDEPTH,
 	RC_TRIS_2D,
-	RC_UPDATE_IMAGE
+	RC_UPDATE_IMAGE,
+	RC_DRAW_2D,
+	RC_CLIPMASK_2D,
+	RC_DELETE_2D,
+	RC_UPDATE_TEXTURE_2D
 } renderCommand_t;
 
 
@@ -1640,6 +1644,11 @@ void RE_DrawTriangles2D( const tris2D_t *tris );
 void R_Transform2D( const draw2DState_t *state, float xy[2] );
 qboolean RE_GetShaderImageSize( qhandle_t hShader, int *width, int *height );
 void RE_GetCaps2D( caps2D_t *caps );
+
+// tr_ui2d.c: the retained 2D (renderercommon/tr_ui2d_common.c)
+void R_GetCaps2DRetained( caps2D_t *caps );
+void RB_SetGL2D( void );
+const void *RB_Draw2D( const void *data );
 qhandle_t RE_CreateImage2D( const char *name, int width, int height, const byte *rgba );
 void RE_UpdateImage2D( qhandle_t hShader, int x, int y, int width, int height, const byte *rgba );
 void RB_Scissor2D( const int *rect );
