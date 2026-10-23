@@ -1637,6 +1637,7 @@ typedef struct {
 	shaderProgram_t genericShader[GENERICDEF_COUNT];
 	shaderProgram_t textureColorShader;
 	shaderProgram_t ui2dShader;
+	shaderProgram_t ui2dFilterShader;
 	shaderProgram_t fogShader[FOGDEF_COUNT];
 	shaderProgram_t dlightShader[DLIGHTDEF_COUNT];
 	shaderProgram_t lightallShader[LIGHTDEF_COUNT];
@@ -2553,7 +2554,8 @@ typedef enum {
 	RC_DRAW_2D,
 	RC_CLIPMASK_2D,
 	RC_DELETE_2D,
-	RC_UPDATE_TEXTURE_2D
+	RC_UPDATE_TEXTURE_2D,
+	RC_LAYER_2D
 } renderCommand_t;
 
 
@@ -2607,6 +2609,14 @@ void RB_Scissor2D( const int *rect );
 void R_GetCaps2DRetained( caps2D_t *caps );
 qboolean R_Paints2DAvailable( void );
 void R_InitUI2D( void );
+
+// tr_ui2d_layers.c: the layers and their filters
+qboolean R_Layers2DAvailable( void );
+void R_InitLayers2D( void );
+void R_ShutdownLayers2D( void );
+struct FBO_s *RB_Target2D( void );
+const void *RB_Layer2D( const void *data );
+void RB_EndFrame2D( void );
 const void *RB_Draw2D( const void *data );
 
 void RE_BeginFrame( stereoFrame_t stereoFrame );
