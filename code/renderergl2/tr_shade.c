@@ -500,6 +500,7 @@ static void ProjectDlightTexture( void ) {
 	float	radius;
 	int deformGen;
 	vec5_t deformParams;
+	shaderProgram_t *sp;
 
 	if ( !backEnd.refdef.num_dlights ) {
 		return;
@@ -507,9 +508,13 @@ static void ProjectDlightTexture( void ) {
 
 	ComputeDeformValues(&deformGen, deformParams);
 
+	// with r_dlightMode, light the surfaces ForwardDlight can't as it lights
+	// the rest, rather than with the projected texture
+	sp = &tr.dlightShader[(deformGen == DGEN_NONE ? 0 : DLIGHTDEF_USE_DEFORM_VERTEXES)
+		| (r_dlightMode->integer ? DLIGHTDEF_PER_PIXEL : 0)];
+
 	for ( l = 0 ; l < backEnd.refdef.num_dlights ; l++ ) {
 		dlight_t	*dl;
-		shaderProgram_t *sp;
 		vec4_t vector;
 
 		if ( !( tess.dlightBits & ( 1 << l ) ) ) {
@@ -520,8 +525,6 @@ static void ProjectDlightTexture( void ) {
 		VectorCopy( dl->transformed, origin );
 		radius = dl->radius;
 		scale = 1.0f / radius;
-
-		sp = &tr.dlightShader[deformGen == DGEN_NONE ? 0 : 1];
 
 		backEnd.pc.c_dlightDraws++;
 
@@ -550,7 +553,9 @@ static void ProjectDlightTexture( void ) {
 		vector[3] = scale;
 		GLSL_SetUniformVec4(sp, UNIFORM_DLIGHTINFO, vector);
 	  
-		GL_BindToTMU( tr.dlightImage, TB_COLORMAP );
+		if ( !r_dlightMode->integer ) {
+			GL_BindToTMU( tr.dlightImage, TB_COLORMAP );
+		}
 
 		// include GLS_DEPTHFUNC_EQUAL so alpha tested surfaces don't add light
 		// where they aren't rendered
