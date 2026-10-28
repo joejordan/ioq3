@@ -485,7 +485,7 @@ int R_CreatePaint2D( const paint2D_t *paint ) {
 		return 0;
 	}
 	r_renderer2D.caps( &caps );
-	if ( !paint || !caps.paints || (unsigned)paint->kind > PAINT2D_MSDF || ( paint->kind == PAINT2D_MSDF && !caps.msdf ) ) {
+	if ( !paint || (unsigned)paint->kind > PAINT2D_MSDF || ( paint->kind == PAINT2D_MSDF ? !caps.msdf : !caps.paints ) ) {
 		ri.Printf( PRINT_DEVELOPER, "CreatePaint2D: kind %i isn't drawn\n", paint ? (int)paint->kind : -1 );
 		return 0;
 	}

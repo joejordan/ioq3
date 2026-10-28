@@ -27,6 +27,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
+// PROBE: the OpenGL 2.0 entry points sdl_glimp.c loads where the context has them
+#define GLE(ret, name, ...) extern name##proc * qgl##name;
+QGL_2_0_PROCS;
+#undef GLE
+
 /*
 ===============
 R_UpdateTexture2DGL
@@ -115,6 +120,77 @@ static void R_FreeGpu2D( handle2DKind_t kind, void *object ) {
 	}
 }
 
+// PROBE: a GLSL 1.20 fragment program for MSDF text, over the fixed-function
+// vertex path: 0 none, -1 not tried yet
+static GLuint	msdfProgram;
+static int		msdfTried;
+static GLint	msdfRange, msdfSourceTexel, msdfSize, msdfMap;
+
+static const char *msdfSource =
+	"#version 120\n"
+	"uniform sampler2D u_Map;\n"
+	"uniform float u_Range;\n"
+	"uniform vec2 u_SourceTexel;\n"
+	"uniform vec2 u_Size;\n"
+	"float Median(vec4 t) { return max(min(t.r, t.g), min(max(t.r, t.g), t.b)); }\n"
+	"void main() {\n"
+	"	vec2 st = gl_TexCoord[0].st;\n"
+	"	vec4 texel = texture2D(u_Map, st);\n"
+	"	vec4 color = gl_Color;\n"
+	"	if (u_SourceTexel.x > 0.0) {\n"
+	"		vec2 one = 1.0 / u_Size;\n"
+	"		vec2 normal = vec2(texture2D(u_Map, st + vec2(one.x, 0.0)).a - texel.a,\n"
+	"			texture2D(u_Map, st + vec2(0.0, one.y)).a - texel.a);\n"
+	"		float slope = dot(normal, normal);\n"
+	"		float width = slope > 1e-8 ? length(u_SourceTexel * normal) * inversesqrt(slope)\n"
+	"			: 0.5 * (u_SourceTexel.x + u_SourceTexel.y);\n"
+	"		color.rgb *= smoothstep(-width, width, (texel.a - 0.5) * u_Range);\n"
+	"	}\n"
+	"	vec2 screenRange = (vec2(u_Range) / u_Size) / fwidth(st);\n"
+	"	float pixelRange = max(min(screenRange.x, screenRange.y), 1.0);\n"
+	"	gl_FragColor = color * clamp(pixelRange * (Median(texel) - 0.5) + 0.5, 0.0, 1.0);\n"
+	"}\n";
+
+static void R_InitMsdf2D( void ) {
+	GLuint	shader;
+	GLint	ok = 0;
+	char	log[2048];
+
+	msdfTried = 1;
+	ri.Printf( PRINT_ALL, "PROBE GL_VERSION: %s\n", (const char *)qglGetString( GL_VERSION ) );
+	ri.Printf( PRINT_ALL, "PROBE GL_RENDERER: %s\n", (const char *)qglGetString( GL_RENDERER ) );
+	if ( !qglCreateShader ) {
+		ri.Printf( PRINT_ALL, "PROBE: no OpenGL 2.0 entry points\n" );
+		return;
+	}
+	ri.Printf( PRINT_ALL, "PROBE GL_SHADING_LANGUAGE_VERSION: %s\n", (const char *)qglGetString( GL_SHADING_LANGUAGE_VERSION ) );
+	shader = qglCreateShader( GL_FRAGMENT_SHADER );
+	qglShaderSource( shader, 1, &msdfSource, NULL );
+	qglCompileShader( shader );
+	qglGetShaderiv( shader, GL_COMPILE_STATUS, &ok );
+	log[0] = '\0';
+	qglGetShaderInfoLog( shader, sizeof( log ), NULL, log );
+	ri.Printf( PRINT_ALL, "PROBE compile: %s %s\n", ok ? "ok" : "FAILED", log );
+	if ( !ok ) {
+		return;
+	}
+	msdfProgram = qglCreateProgram();
+	qglAttachShader( msdfProgram, shader );
+	qglLinkProgram( msdfProgram );
+	qglGetProgramiv( msdfProgram, GL_LINK_STATUS, &ok );
+	log[0] = '\0';
+	qglGetProgramInfoLog( msdfProgram, sizeof( log ), NULL, log );
+	ri.Printf( PRINT_ALL, "PROBE link: %s %s\n", ok ? "ok" : "FAILED", log );
+	if ( !ok ) {
+		msdfProgram = 0;
+		return;
+	}
+	msdfRange = qglGetUniformLocation( msdfProgram, "u_Range" );
+	msdfSourceTexel = qglGetUniformLocation( msdfProgram, "u_SourceTexel" );
+	msdfSize = qglGetUniformLocation( msdfProgram, "u_Size" );
+	msdfMap = qglGetUniformLocation( msdfProgram, "u_Map" );
+}
+
 /*
 ===============
 R_GetCaps2DRetained
@@ -127,6 +203,10 @@ void R_GetCaps2DRetained( caps2D_t *caps ) {
 	caps->textureA8 = qtrue;
 	caps->clipMask = glConfig.stencilBits >= 8;
 	caps->maxGeometryVerts = MAX_GEOMETRY2D_VERTS;
+	if ( !msdfTried ) {
+		R_InitMsdf2D();
+	}
+	caps->msdf = msdfProgram != 0;
 }
 
 
@@ -250,7 +330,9 @@ static void RB_Draw2DArrays( const draw2DState_t *state, const polyVert2D_t *ver
 	int numIndexes, qboolean writeColor ) {
 	texture2D_t	*texture = ( state->flags & TRIS2D_TEXTURE2D ) ? R_GetTexture2D( state->texture, qtrue ) : NULL;
 	qboolean	vertexPremul = ( state->flags & TRIS2D_PREMULTIPLIED ) != 0;
-	qboolean	premul = texture ? texture->format != TEX2D_RGBA8 : vertexPremul;
+	const paint2D_t	*paint = writeColor && ( state->flags & TRIS2D_PAINT ) ? R_GetPaint2D( state->paint, qtrue ) : NULL;
+	qboolean	msdf = paint && paint->kind == PAINT2D_MSDF && texture && msdfProgram;
+	qboolean	premul = msdf || ( texture ? texture->format != TEX2D_RGBA8 : vertexPremul );
 	const byte	*colors = writeColor ? RB_Colors2D( verts, numVerts, vertexPremul, premul ) : NULL;
 	float		matrix[16];
 
@@ -285,7 +367,17 @@ static void RB_Draw2DArrays( const draw2DState_t *state, const polyVert2D_t *ver
 		qglColor4f( 1, 1, 1, 1 );
 	}
 
+	if ( msdf ) {
+		qglUseProgram( msdfProgram );
+		qglUniform1i( msdfMap, 0 );
+		qglUniform1f( msdfRange, paint->msdfRange );
+		qglUniform2f( msdfSourceTexel, paint->msdfSourceTexel[0], paint->msdfSourceTexel[1] );
+		qglUniform2f( msdfSize, texture->image.width, texture->image.height );
+	}
 	qglDrawElements( GL_TRIANGLES, numIndexes, GL_UNSIGNED_INT, indexes );
+	if ( msdf ) {
+		qglUseProgram( 0 );
+	}
 
 	// nothing else draws from these arrays, which a delete frees
 	qglDisableClientState( GL_COLOR_ARRAY );

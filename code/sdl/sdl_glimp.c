@@ -370,6 +370,10 @@ static qboolean GLimp_GetProcAddresses( qboolean fixedFunction ) {
 			QGL_1_1_FIXED_FUNCTION_PROCS;
 			QGL_DESKTOP_1_1_PROCS;
 			QGL_DESKTOP_1_1_FIXED_FUNCTION_PROCS;
+			// PROBE: GLSL for the UI's MSDF text, where the context has it
+			if ( QGL_VERSION_ATLEAST( 2, 0 ) ) {
+				QGL_2_0_PROCS;
+			}
 		} else if ( qglesMajorVersion == 1 && qglesMinorVersion >= 1 ) {
 			// OpenGL ES 1.1 (2.0 is not backward compatible)
 			QGL_1_1_PROCS;
