@@ -1147,12 +1147,21 @@ void GLSL_InitGPUShaders(void)
 
 	for (i = 0; i < DLIGHTDEF_COUNT; i++)
 	{
+		// r_dlightMode is latched: ProjectDlightTexture only uses one kind
+		if (!(i & DLIGHTDEF_PER_PIXEL) != !r_dlightMode->integer)
+			continue;
+
 		attribs = ATTR_POSITION | ATTR_NORMAL | ATTR_TEXCOORD;
 		extradefines[0] = '\0';
 
 		if (i & DLIGHTDEF_USE_DEFORM_VERTEXES)
 		{
 			Q_strcat(extradefines, 1024, "#define USE_DEFORM_VERTEXES\n");
+		}
+
+		if (i & DLIGHTDEF_PER_PIXEL)
+		{
+			Q_strcat(extradefines, 1024, "#define USE_PER_PIXEL\n");
 		}
 
 		if (!GLSL_InitGPUShader(&tr.dlightShader[i], "dlight", attribs, qtrue, extradefines, qtrue, fallbackShader_dlight_vp, fallbackShader_dlight_fp))

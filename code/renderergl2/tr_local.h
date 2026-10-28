@@ -576,8 +576,9 @@ enum
 enum
 {
 	DLIGHTDEF_USE_DEFORM_VERTEXES  = 0x0001,
-	DLIGHTDEF_ALL                  = 0x0001,
-	DLIGHTDEF_COUNT                = 0x0002,
+	DLIGHTDEF_PER_PIXEL            = 0x0002,
+	DLIGHTDEF_ALL                  = 0x0003,
+	DLIGHTDEF_COUNT                = 0x0004,
 };
 
 enum
