@@ -1155,6 +1155,11 @@ void GLSL_InitGPUShaders(void)
 			Q_strcat(extradefines, 1024, "#define USE_DEFORM_VERTEXES\n");
 		}
 
+		if (i & DLIGHTDEF_PER_PIXEL)
+		{
+			Q_strcat(extradefines, 1024, "#define USE_PER_PIXEL\n");
+		}
+
 		if (!GLSL_InitGPUShader(&tr.dlightShader[i], "dlight", attribs, qtrue, extradefines, qtrue, fallbackShader_dlight_vp, fallbackShader_dlight_fp))
 		{
 			ri.Error(ERR_FATAL, "Could not load dlight shader!");

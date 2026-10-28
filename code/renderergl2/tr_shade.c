@@ -521,7 +521,10 @@ static void ProjectDlightTexture( void ) {
 		radius = dl->radius;
 		scale = 1.0f / radius;
 
-		sp = &tr.dlightShader[deformGen == DGEN_NONE ? 0 : 1];
+		// with r_dlightMode, light the surfaces ForwardDlight can't as it
+		// lights the rest, rather than with the projected texture
+		sp = &tr.dlightShader[(deformGen == DGEN_NONE ? 0 : DLIGHTDEF_USE_DEFORM_VERTEXES)
+			| (r_dlightMode->integer ? DLIGHTDEF_PER_PIXEL : 0)];
 
 		backEnd.pc.c_dlightDraws++;
 
