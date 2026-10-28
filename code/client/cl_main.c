@@ -5448,9 +5448,14 @@ int CL_ServerStatus( char *serverAddress, char *serverStatusString, int maxLen )
 		return qfalse;
 	}
 	serverStatus = CL_GetServerStatus( to );
-	// if no server status string then reset the server status request for this address
+	// if no server status string then reset the server status request for this address,
+	// letting go of its answer, so the next request asks the server again; another
+	// address's request, which may still be waiting, is left alone
 	if ( !serverStatusString ) {
-		serverStatus->retrieved = qtrue;
+		if ( NET_CompareAdr( to, serverStatus->address ) ) {
+			serverStatus->address.port = 0;
+			serverStatus->retrieved = qtrue;
+		}
 		return qfalse;
 	}
 
