@@ -296,6 +296,14 @@ static void InitOpenGL( void )
 			qglGetIntegerv( GL_MAX_VERTEX_UNIFORM_COMPONENTS, &temp );
 		}
 		glRefConfig.glslMaxAnimatedBones = Com_Clamp( 0, IQM_MAX_JOINTS, ( temp - 160 ) / 16 );
+
+		// for the stages' dlights; a limit a profile doesn't have reads 0
+		temp = 0;
+		qglGetIntegerv( qglesMajorVersion ? GL_MAX_FRAGMENT_UNIFORM_VECTORS : GL_MAX_FRAGMENT_UNIFORM_COMPONENTS, &temp );
+		glRefConfig.maxFragmentUniformComponents = qglGetError() == GL_NO_ERROR ? temp * ( qglesMajorVersion ? 4 : 1 ) : 0;
+		temp = 0;
+		qglGetIntegerv( qglesMajorVersion ? GL_MAX_VARYING_VECTORS : GL_MAX_VARYING_COMPONENTS, &temp );
+		glRefConfig.maxVaryingComponents = qglGetError() == GL_NO_ERROR ? temp * ( qglesMajorVersion ? 4 : 1 ) : 0;
 		if ( glRefConfig.glslMaxAnimatedBones < 12 ) {
 			glRefConfig.glslMaxAnimatedBones = 0;
 		}

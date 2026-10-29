@@ -89,8 +89,8 @@ void main()
 	vec3 light = CalcDlights();
 	if (u_DlightTo == 1)
 		gl_FragColor.rgb = (color.rgb + light) * var_Color.rgb;
-	else
-		gl_FragColor.rgb = color.rgb * (var_Color.rgb + light);
+	else // beside a vertex color, scaled as rgbGen vertex scales that light
+		gl_FragColor.rgb = color.rgb * (var_Color.rgb + light * DLIGHT_VERTEX_SCALE);
 #else
 	gl_FragColor.rgb = color.rgb * var_Color.rgb;
 #endif

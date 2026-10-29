@@ -216,12 +216,12 @@ vec3 CalcSpecular(vec3 specular, float NH, float EH, float roughness)
 // vertexes bring, which the diffuse then multiplies (DLIGHTTO_LIGHTALL)
 uniform int       u_NumDlights;
 #if defined(GL_ES) && defined(GL_FRAGMENT_PRECISION_HIGH)
-uniform highp vec4 u_Dlights[2 * MAX_GENERIC_DLIGHTS];
-varying highp vec3 var_DlightPosition;
+#define DLIGHT_PRECISION highp
 #else
-uniform vec4      u_Dlights[2 * MAX_GENERIC_DLIGHTS];
-varying vec3      var_DlightPosition;
+#define DLIGHT_PRECISION
 #endif
+uniform DLIGHT_PRECISION vec4 u_Dlights[2 * MAX_GENERIC_DLIGHTS];
+varying DLIGHT_PRECISION vec3 var_DlightPosition;
 varying vec3      var_DlightNormal;
 #endif
 
@@ -244,32 +244,29 @@ float CalcLightAttenuation(float point, float normDist)
 #if defined(USE_DLIGHTS)
 // the dlights join the light arriving, in its units: a lightmap's, which
 // the stage's color scales, or the vertexes' (or a vertex color's), which
-// the color is, so they're added beside it (scaled to it on upload)
+// the color is, so they're added beside it, scaled as rgbGen vertex scales
+// that light (tr.identityLight)
   #if defined(USE_LIGHTMAP)
 	#define DLIGHT_SCALE var_Color.rgb
   #else
-	#define DLIGHT_SCALE vec3(1.0)
+	#define DLIGHT_SCALE vec3(DLIGHT_VERTEX_SCALE)
   #endif
 
 vec3 CalcDlights()
 {
+	vec3 DN = normalize(!gl_FrontFacing ? var_DlightNormal : -var_DlightNormal);
 	vec3 dlights = vec3(0.0);
 
-	if (u_NumDlights > 0)
+	for (int i = 0; i < MAX_GENERIC_DLIGHTS; i++)
 	{
-		vec3 DN = normalize(!gl_FrontFacing ? var_DlightNormal : -var_DlightNormal);
+		if (i >= u_NumDlights)
+			break;
 
-		for (int i = 0; i < MAX_GENERIC_DLIGHTS; i++)
-		{
-			if (i >= u_NumDlights)
-				break;
-
-			// in radii, so the square stays in range at medium precision
-			vec3 DL = (u_Dlights[2 * i].xyz - var_DlightPosition) * u_Dlights[2 * i].w;
-			float invLength = inversesqrt(max(dot(DL, DL), 1e-4));
-			dlights += u_Dlights[2 * i + 1].rgb * (CalcLightAttenuation(1.0, invLength * invLength)
-				* clamp(dot(DN, DL) * invLength, 0.0, 1.0));
-		}
+		// in radii, so the square stays in range at medium precision
+		vec3 DL = (u_Dlights[2 * i].xyz - var_DlightPosition) * u_Dlights[2 * i].w;
+		float invLength = inversesqrt(max(dot(DL, DL), 1e-4));
+		dlights += u_Dlights[2 * i + 1].rgb * (CalcLightAttenuation(1.0, invLength * invLength)
+			* clamp(dot(DN, DL) * invLength, 0.0, 1.0));
 	}
 
 	return dlights;

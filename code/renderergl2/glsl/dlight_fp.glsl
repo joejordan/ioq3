@@ -34,10 +34,11 @@ void main()
 	// radii, so r^2 / d^2 is one over its square. The light is the alpha
 	// too, so the alpha test drops what it doesn't reach, as the projected
 	// shader drops what its vertex color doesn't
-	float sqrLightDist = dot(var_LightDir, var_LightDir);
-	float attenuation = CalcLightAttenuation(1.0, 1.0 / sqrLightDist);
+	// (not infinite at the light's origin, where 0 * inf would be NaN)
+	float invLength = inversesqrt(max(dot(var_LightDir, var_LightDir), 1e-4));
+	float attenuation = CalcLightAttenuation(1.0, invLength * invLength);
 	vec3 N = normalize(!gl_FrontFacing ? var_Normal : -var_Normal);
-	float NL = clamp(dot(N, var_LightDir) * inversesqrt(sqrLightDist), 0.0, 1.0);
+	float NL = clamp(dot(N, var_LightDir) * invLength, 0.0, 1.0);
 	vec4 color = vec4(attenuation * NL);
 #else
 	vec4 color = texture2D(u_DiffuseMap, var_Tex1);

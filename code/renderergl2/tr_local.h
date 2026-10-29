@@ -634,8 +634,8 @@ typedef enum {
 	DLIGHT_PROJECTED	// ProjectDlightTexture, over the finished surface
 } dlightPath_t;
 
-// what of a stage a surface's dlights join (generic_fp.glsl's u_DlightTo, and
-// lightall's own light)
+// what of a stage a surface's dlights join: a generic stage's texture or color
+// (generic_fp.glsl's u_DlightTo), or a lightall stage's light
 enum {
 	DLIGHTTO_NONE,
 	DLIGHTTO_LIGHTMAP,	// a generic stage's texture, the lightmap
@@ -1454,6 +1454,8 @@ typedef struct {
 	int glslMajorVersion;
 	int glslMinorVersion;
 	int glslMaxAnimatedBones;
+	int maxFragmentUniformComponents;	// for the stages' dlights (GLSL_StageDlightsFit)
+	int maxVaryingComponents;
 
 	memInfo_t   memInfo;
 
@@ -2103,6 +2105,7 @@ shader_t	*R_GetShaderByState( int index, long *cycleTime );
 shader_t *R_FindShaderByName( const char *name );
 void		R_InitShaders( void );
 void		R_ShaderList_f( void );
+void		R_DlightPaths_f( void );
 void    R_RemapShader(const char *oldShader, const char *newShader, const char *timeOffset);
 
 /*
@@ -2350,7 +2353,6 @@ void GLSL_SetUniformVec3(shaderProgram_t *program, int uniformNum, const vec3_t 
 void GLSL_SetUniformVec4(shaderProgram_t *program, int uniformNum, const vec4_t v);
 void GLSL_SetUniformMat4(shaderProgram_t *program, int uniformNum, const mat4_t matrix);
 void GLSL_SetUniformMat4BoneMatrix(shaderProgram_t *program, int uniformNum, /*const*/ mat4_t *matrix, int numMatricies);
-void R_DlightPaths_f( void );
 void GLSL_SetUniformVec4Dlights(shaderProgram_t *program, int uniformNum, const vec4_t *v, int count);
 
 shaderProgram_t *GLSL_GetGenericShaderProgram(int stage, qboolean dlights);
