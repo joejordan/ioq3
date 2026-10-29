@@ -409,6 +409,8 @@ typedef struct {
 
 	qboolean		isDetail;
 
+	int				dlightTo;		// with DLIGHT_STAGE, what of the stage the dlights join (DLIGHTTO_*)
+
 	stageType_t     type;
 	struct shaderProgram_s *glslShaderGroup;
 	int glslShaderIndex;
@@ -485,6 +487,8 @@ typedef struct shader_s {
 	deformStage_t	deforms[MAX_SHADER_DEFORMS];
 
 	int			numUnfoggedPasses;
+
+	int			dlightPath;		// how a dlight lights the shader (dlightPath_t), decided at load
 	shaderStage_t	*stages[MAX_SHADER_STAGES];		
 
 	void		(*optimalStageIteratorFunc)( void );
@@ -560,8 +564,9 @@ enum
 	GENERICDEF_USE_FOG              = 0x0008,
 	GENERICDEF_USE_RGBAGEN          = 0x0010,
 	GENERICDEF_USE_BONE_ANIMATION   = 0x0020,
-	GENERICDEF_ALL                  = 0x003F,
-	GENERICDEF_COUNT                = 0x0040,
+	GENERICDEF_USE_DLIGHT           = 0x0040,
+	GENERICDEF_ALL                  = 0x007F,
+	GENERICDEF_COUNT                = 0x0080,
 };
 
 enum
@@ -613,7 +618,28 @@ enum
 	GLSL_VEC3,
 	GLSL_VEC4,
 	GLSL_MAT16,
-	GLSL_MAT16_BONEMATRIX
+	GLSL_MAT16_BONEMATRIX,
+	GLSL_VEC4_DLIGHTS
+};
+
+// the dlights a stage's light takes in one pass (GENERICDEF_USE_DLIGHT): all
+// a surface can have
+#define MAX_GENERIC_DLIGHTS MAX_DLIGHTS
+
+typedef enum {
+	DLIGHT_NONE,		// translucent, sky or nodlight: no dlight
+	DLIGHT_FORWARD,		// ForwardDlight, after the stages: lightall's first, the rest additive
+	DLIGHT_STAGE,		// in the stages of the light arriving (shaderStage_t's dlightTo)
+	DLIGHT_PROJECTED	// ProjectDlightTexture, over the finished surface
+} dlightPath_t;
+
+// what of a stage a surface's dlights join (generic_fp.glsl's u_DlightTo, and
+// lightall's own light)
+enum {
+	DLIGHTTO_NONE,
+	DLIGHTTO_LIGHTMAP,	// a generic stage's texture, the lightmap
+	DLIGHTTO_COLOR,		// a generic stage's color, the vertexes' or the light grid's
+	DLIGHTTO_LIGHTALL	// a lit lightall stage's light, before its diffuse multiplies it
 };
 
 typedef enum
@@ -666,6 +692,9 @@ typedef enum
 	UNIFORM_VERTCOLOR,
 
 	UNIFORM_DLIGHTINFO,
+	UNIFORM_NUMDLIGHTS,
+	UNIFORM_DLIGHTS,
+	UNIFORM_DLIGHTTO,
 	UNIFORM_LIGHTFORWARD,
 	UNIFORM_LIGHTUP,
 	UNIFORM_LIGHTRIGHT,
@@ -2318,8 +2347,10 @@ void GLSL_SetUniformVec3(shaderProgram_t *program, int uniformNum, const vec3_t 
 void GLSL_SetUniformVec4(shaderProgram_t *program, int uniformNum, const vec4_t v);
 void GLSL_SetUniformMat4(shaderProgram_t *program, int uniformNum, const mat4_t matrix);
 void GLSL_SetUniformMat4BoneMatrix(shaderProgram_t *program, int uniformNum, /*const*/ mat4_t *matrix, int numMatricies);
+void R_DlightPaths_f( void );
+void GLSL_SetUniformVec4Dlights(shaderProgram_t *program, int uniformNum, const vec4_t *v, int count);
 
-shaderProgram_t *GLSL_GetGenericShaderProgram(int stage);
+shaderProgram_t *GLSL_GetGenericShaderProgram(int stage, qboolean dlights);
 
 /*
 ============================================================

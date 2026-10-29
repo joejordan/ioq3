@@ -2043,6 +2043,111 @@ SHADER OPTIMIZATION AND FOGGING
 
 /*
 ===================
+ComputeDlightPath
+
+How a dlight lights the shader. A dlight is more light arriving at the
+surface, so it joins the stages that take the light (DLIGHT_STAGE): each lit
+lightall stage, whose diffuse then multiplies it as it does the lightmap
+(DLIGHTTO_LIGHTALL), and among the rest the lightmap's stage, or on a
+surface lit by its vertexes or the light grid, the stage taking that color
+(DLIGHTTO_LIGHTMAP, DLIGHTTO_COLOR). The stages after them apply their
+blends to it as to the lightmap, so an overlay or a glow isn't lit by it. A
+shader lightall draws first, with only unlit additive stages after it, takes
+ForwardDlight's light after them, which is the same sum (DLIGHT_FORWARD).
+The rest keep the projected dlight over the finished surface: with a stage
+lightall lights by a light vector, or fog adjusts, or no stage of light.
+===================
+*/
+static void ComputeDlightPath( void )
+{
+	int i, takers = 0, lightmap = -1, color = -1, forward = 1, blocked = 0;
+
+	for ( i = 0; i < MAX_SHADER_STAGES; i++ ) {
+		stages[i].dlightTo = DLIGHTTO_NONE;
+	}
+	if ( shader.sort > SS_OPAQUE || ( shader.surfaceFlags & ( SURF_NODLIGHT | SURF_SKY ) ) || !stages[0].active ) {
+		shader.dlightPath = DLIGHT_NONE;
+		return;
+	}
+
+	for ( i = 0; i < MAX_SHADER_STAGES && stages[i].active; i++ ) {
+		shaderStage_t *pStage = &stages[i];
+		int src = pStage->stateBits & GLS_SRCBLEND_BITS, dst = pStage->stateBits & GLS_DSTBLEND_BITS;
+		int lightType = pStage->glslShaderGroup == tr.lightallShader ? pStage->glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK : 0;
+
+		if ( i > 0 && ( lightType || dst != GLS_DSTBLEND_ONE || ( src != GLS_SRCBLEND_ONE && src != GLS_SRCBLEND_SRC_ALPHA ) ) ) {
+			forward = 0;
+		}
+		if ( pStage->adjustColorsForFog || lightType == LIGHTDEF_USE_LIGHT_VECTOR ) {
+			blocked = 1;
+		} else if ( lightType ) {
+			pStage->dlightTo = DLIGHTTO_LIGHTALL;
+			takers++;
+		} else if ( pStage->glslShaderGroup == tr.lightallShader ) {
+			// unlit, its color the vertexes' light (a map model's): that's
+			// the light arriving, in a stage that's opaque or multiplies
+			if ( ( pStage->rgbGen == CGEN_VERTEX || pStage->rgbGen == CGEN_EXACT_VERTEX
+				|| pStage->rgbGen == CGEN_VERTEX_LIT || pStage->rgbGen == CGEN_EXACT_VERTEX_LIT )
+				&& ( !( src || dst ) || ( src == GLS_SRCBLEND_ONE && dst == GLS_DSTBLEND_ZERO )
+				|| src == GLS_SRCBLEND_DST_COLOR || dst == GLS_DSTBLEND_SRC_COLOR ) ) {
+				pStage->dlightTo = DLIGHTTO_LIGHTALL;
+				takers++;
+			}
+		} else {
+			// a deluxe map is a light's direction, not its color
+			if ( pStage->bundle[0].isLightmap && !( tr.worldDeluxeMapping && shader.lightmapIndex >= 0
+				&& pStage->bundle[0].image[0] == tr.deluxemaps[shader.lightmapIndex] ) ) {
+				if ( lightmap < 0 ) {
+					lightmap = i;
+				}
+			} else if ( color < 0 && ( !( src || dst ) || ( src == GLS_SRCBLEND_ONE && dst == GLS_DSTBLEND_ZERO )
+				|| src == GLS_SRCBLEND_DST_COLOR || dst == GLS_DSTBLEND_SRC_COLOR ) ) {
+				// a vertex color only in a stage that's opaque or
+				// multiplies the frame: an additive glow or an
+				// alpha-blended overlay taking the dlight would light
+				// that and leave the rest of the surface dark
+				switch ( pStage->rgbGen ) {
+					case CGEN_VERTEX:
+					case CGEN_EXACT_VERTEX:
+					case CGEN_VERTEX_LIT:
+					case CGEN_EXACT_VERTEX_LIT:
+					case CGEN_LIGHTING_DIFFUSE:
+						color = i;
+						break;
+					default:
+						break;
+				}
+			}
+		}
+	}
+
+	if ( !r_dlightMode->integer || blocked ) {
+		forward = forward && r_dlightMode->integer && stages[0].glslShaderGroup == tr.lightallShader
+			&& ( stages[0].glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK );
+		takers = 0;
+	} else {
+		forward = forward && stages[0].glslShaderGroup == tr.lightallShader
+			&& ( stages[0].glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK );
+		// the lightmap's own stage, or the vertex color's where nothing
+		// else takes the light
+		if ( lightmap >= 0 ) {
+			stages[lightmap].dlightTo = DLIGHTTO_LIGHTMAP;
+			takers++;
+		} else if ( color >= 0 && !takers ) {
+			stages[color].dlightTo = DLIGHTTO_COLOR;
+			takers++;
+		}
+	}
+	if ( forward || !takers ) {
+		for ( i = 0; i < MAX_SHADER_STAGES; i++ ) {
+			stages[i].dlightTo = DLIGHTTO_NONE;
+		}
+	}
+	shader.dlightPath = forward ? DLIGHT_FORWARD : takers ? DLIGHT_STAGE : DLIGHT_PROJECTED;
+}
+
+/*
+===================
 ComputeStageIteratorFunc
 
 See if we can use on of the simple fastpath stage functions,
@@ -3245,6 +3350,8 @@ static shader_t *FinishShader( void ) {
 	// fogonly shaders don't have any normal passes
 	if (stage == 0 && !shader.isSky)
 		shader.sort = SS_FOG;
+
+	ComputeDlightPath();
 
 	// determine which stage iterator function is appropriate
 	ComputeStageIteratorFunc();

@@ -117,6 +117,9 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_VertColor", GLSL_VEC4 },
 
 	{ "u_DlightInfo",    GLSL_VEC4 },
+	{ "u_NumDlights",    GLSL_INT },
+	{ "u_Dlights",       GLSL_VEC4_DLIGHTS },
+	{ "u_DlightTo",      GLSL_INT },
 	{ "u_LightForward",  GLSL_VEC3 },
 	{ "u_LightUp",       GLSL_VEC3 },
 	{ "u_LightRight",    GLSL_VEC3 },
@@ -725,6 +728,9 @@ void GLSL_InitUniforms(shaderProgram_t *program)
 			case GLSL_MAT16_BONEMATRIX:
 				size += sizeof(vec_t) * 16 * glRefConfig.glslMaxAnimatedBones;
 				break;
+			case GLSL_VEC4_DLIGHTS:
+				size += sizeof(vec4_t) * 2 * MAX_GENERIC_DLIGHTS;
+				break;
 			default:
 				break;
 		}
@@ -911,6 +917,32 @@ void GLSL_SetUniformMat4(shaderProgram_t *program, int uniformNum, const mat4_t 
 	qglProgramUniformMatrix4fvEXT(program->program, uniforms[uniformNum], 1, GL_FALSE, matrix);
 }
 
+// count vec4s of a stage's dlights, two each: origin and 1 / radius, color
+void GLSL_SetUniformVec4Dlights(shaderProgram_t *program, int uniformNum, const vec4_t *v, int count)
+{
+	GLint *uniforms = program->uniforms;
+	vec_t *compare = (float *)(program->uniformBuffer + program->uniformBufferOffsets[uniformNum]);
+
+	if (uniforms[uniformNum] == -1) {
+		return;
+	}
+
+	if (uniformsInfo[uniformNum].type != GLSL_VEC4_DLIGHTS || count > 2 * MAX_GENERIC_DLIGHTS)
+	{
+		ri.Printf( PRINT_WARNING, "GLSL_SetUniformVec4Dlights: wrong type or count for uniform %i in program %s\n", uniformNum, program->name);
+		return;
+	}
+
+	if (!memcmp(v, compare, count * sizeof(vec4_t)))
+	{
+		return;
+	}
+
+	Com_Memcpy(compare, v, count * sizeof(vec4_t));
+
+	qglProgramUniform4fvEXT(program->program, uniforms[uniformNum], count, &v[0][0]);
+}
+
 void GLSL_SetUniformMat4BoneMatrix(shaderProgram_t *program, int uniformNum, /*const*/ mat4_t *matrix, int numMatricies)
 {
 	GLint *uniforms = program->uniforms;
@@ -1001,6 +1033,11 @@ void GLSL_InitGPUShaders(void)
 		if ((i & GENERICDEF_USE_BONE_ANIMATION) && !glRefConfig.glslMaxAnimatedBones)
 			continue;
 
+		// a stage's light with the dlights on it, for r_dlightMode, which
+		// is latched; never a stage fog adjusts (ComputeDlightPath)
+		if ((i & GENERICDEF_USE_DLIGHT) && (!r_dlightMode->integer || (i & GENERICDEF_USE_FOG)))
+			continue;
+
 		attribs = ATTR_POSITION | ATTR_TEXCOORD | ATTR_LIGHTCOORD | ATTR_NORMAL | ATTR_COLOR;
 		extradefines[0] = '\0';
 
@@ -1032,6 +1069,9 @@ void GLSL_InitGPUShaders(void)
 
 		if (i & GENERICDEF_USE_RGBAGEN)
 			Q_strcat(extradefines, 1024, "#define USE_RGBAGEN\n");
+
+		if (i & GENERICDEF_USE_DLIGHT)
+			Q_strcat(extradefines, 1024, va("#define USE_DLIGHT\n#define MAX_GENERIC_DLIGHTS %d\n", MAX_GENERIC_DLIGHTS));
 
 		if (!GLSL_InitGPUShader(&tr.genericShader[i], "generic", attribs, qtrue, extradefines, qtrue, fallbackShader_generic_vp, fallbackShader_generic_fp))
 		{
@@ -1206,6 +1246,12 @@ void GLSL_InitGPUShaders(void)
 
 		if (glRefConfig.swizzleNormalmap)
 			Q_strcat(extradefines, 1024, "#define SWIZZLE_NORMALMAP\n");
+
+		// the surface's dlights join its light (DLIGHTTO_LIGHTALL): the
+		// lightmap's, the vertexes', or an unlit stage's vertex color, but
+		// for ForwardDlight's own light vector
+		if (lightType != LIGHTDEF_USE_LIGHT_VECTOR && r_dlightMode->integer)
+			Q_strcat(extradefines, 1024, va("#define USE_DLIGHTS\n#define MAX_GENERIC_DLIGHTS %d\n", MAX_GENERIC_DLIGHTS));
 
 		if (lightType)
 		{
@@ -1696,10 +1742,11 @@ void GLSL_BindProgram(shaderProgram_t * program)
 }
 
 
-shaderProgram_t *GLSL_GetGenericShaderProgram(int stage)
+// dlights: the stage takes the surface's dlights (GENERICDEF_USE_DLIGHT)
+shaderProgram_t *GLSL_GetGenericShaderProgram(int stage, qboolean dlights)
 {
 	shaderStage_t *pStage = tess.xstages[stage];
-	int shaderAttribs = 0;
+	int shaderAttribs = dlights ? GENERICDEF_USE_DLIGHT : 0;
 
 	if (tess.fogNum && pStage->adjustColorsForFog)
 	{

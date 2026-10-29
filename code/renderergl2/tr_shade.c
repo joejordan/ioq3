@@ -1162,7 +1162,112 @@ static unsigned int RB_CalcShaderVertexAttribs( shaderCommands_t *input )
 	return vertexAttribs;
 }
 
-static void RB_IterateStagesGeneric( shaderCommands_t *input )
+// the surface's dlights for its light stage (GENERICDEF_USE_DLIGHT), two
+// vec4s each: the origin, in the model's space, and 1 / radius; the color
+static int numStageDlights;
+static vec4_t stageDlightInfo[2 * MAX_GENERIC_DLIGHTS];
+// the same with the colors in the vertexes' light's units (tr.identityLight,
+// as rgbGen vertex has it), for a stage whose color is that light
+static vec4_t stageDlightVertex[2 * MAX_GENERIC_DLIGHTS];
+
+/*
+** R_DlightPaths_f
+
+PROTOTYPE (ds/dlight-lmstage): the world's surfaces by how a dlight lights
+them (shader_t's dlightPath)
+*/
+void R_DlightPaths_f( void )
+{
+	int i, counts[6] = { 0 };
+	static const char *names[6] = { "no dlight", "ForwardDlight", "in lit lightall stages", "in the lightmap's stage",
+		"in the vertex color's stage", "projected" };
+
+	if ( !tr.world ) {
+		ri.Printf( PRINT_ALL, "dlightpaths: no world\n" );
+		return;
+	}
+	for ( i = 0; i < tr.world->numsurfaces; i++ ) {
+		shader_t *shader = tr.world->surfaces[i].shader;
+
+		switch ( shader->dlightPath ) {
+			case DLIGHT_STAGE: {
+				int k, to = DLIGHTTO_COLOR;
+
+				for ( k = 0; k < MAX_SHADER_STAGES && shader->stages[k]; k++ ) {
+					if ( shader->stages[k]->dlightTo == DLIGHTTO_LIGHTALL ) {
+						to = DLIGHTTO_LIGHTALL;
+					} else if ( shader->stages[k]->dlightTo == DLIGHTTO_LIGHTMAP && to != DLIGHTTO_LIGHTALL ) {
+						to = DLIGHTTO_LIGHTMAP;
+					}
+				}
+				counts[to == DLIGHTTO_LIGHTALL ? 2 : to == DLIGHTTO_LIGHTMAP ? 3 : 4]++;
+				break;
+			}
+			case DLIGHT_PROJECTED:
+				counts[5]++;
+				break;
+			default:
+				counts[shader->dlightPath]++;
+				break;
+		}
+	}
+	for ( i = 0; i < 6; i++ ) {
+		ri.Printf( PRINT_ALL, "dlightpaths: %d surfaces: %s\n", counts[i], names[i] );
+	}
+	// "dlightpaths list": each shader the projected dlight lights, once, and its stages
+	if ( !Q_stricmp( ri.Cmd_Argv( 1 ), "list" ) ) {
+		byte *listed = ri.Malloc( tr.numShaders );
+
+		Com_Memset( listed, 0, tr.numShaders );
+		for ( i = 0; i < tr.world->numsurfaces; i++ ) {
+			shader_t *shader = tr.world->surfaces[i].shader;
+			int k;
+
+			if ( shader->dlightPath != DLIGHT_PROJECTED || listed[shader->index] ) {
+				continue;
+			}
+			listed[shader->index] = 1;
+			ri.Printf( PRINT_ALL, "dlightpaths: projected %s, %d passes:", shader->name, shader->numUnfoggedPasses );
+			for ( k = 0; k < MAX_SHADER_STAGES && shader->stages[k]; k++ ) {
+				shaderStage_t *st = shader->stages[k];
+				ri.Printf( PRINT_ALL, " [%d %s%s tcgen %d rgbgen %d blend %x fog %d]", k,
+					st->glslShaderGroup == tr.lightallShader ? va( "lightall %x", st->glslShaderIndex ) : "generic",
+					st->bundle[0].isLightmap ? " lightmap" : "", st->bundle[0].tcGen, st->rgbGen,
+					st->stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS ), st->adjustColorsForFog );
+			}
+			ri.Printf( PRINT_ALL, "\n" );
+		}
+		ri.Free( listed );
+	}
+}
+
+static void SetStageDlights( void )
+{
+	int l;
+
+	numStageDlights = 0;
+	for ( l = 0; l < backEnd.refdef.num_dlights; l++ ) {
+		dlight_t *dl = &backEnd.refdef.dlights[l];
+
+		if ( !( tess.dlightBits & ( 1 << l ) ) ) {
+			continue;
+		}
+		VectorCopy( dl->transformed, stageDlightInfo[2 * numStageDlights] );
+		stageDlightInfo[2 * numStageDlights][3] = 1.0f / dl->radius;
+		// in the units of the light it joins, the lightmap's (scale 1
+		// matched ForwardDlight's neighbors within a sixth on llvmpipe)
+		VectorCopy( dl->color, stageDlightInfo[2 * numStageDlights + 1] );
+		stageDlightInfo[2 * numStageDlights + 1][3] = 1.0f;
+		Vector4Copy( stageDlightInfo[2 * numStageDlights], stageDlightVertex[2 * numStageDlights] );
+		VectorScale( dl->color, tr.identityLight, stageDlightVertex[2 * numStageDlights + 1] );
+		stageDlightVertex[2 * numStageDlights + 1][3] = 1.0f;
+		numStageDlights++;
+	}
+}
+
+// stageDlights: the surface's dlights join the stages that take them
+// (shaderStage_t's dlightTo; SetStageDlights)
+static void RB_IterateStagesGeneric( shaderCommands_t *input, qboolean stageDlights )
 {
 	int stage;
 	
@@ -1272,7 +1377,7 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input )
 		}
 		else
 		{
-			sp = GLSL_GetGenericShaderProgram(stage);
+			sp = GLSL_GetGenericShaderProgram(stage, stageDlights && pStage->dlightTo != DLIGHTTO_NONE);
 
 			backEnd.pc.c_genericDraws++;
 		}
@@ -1284,6 +1389,24 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input )
 		GLSL_SetUniformVec3(sp, UNIFORM_LOCALVIEWORIGIN, backEnd.or.viewOrigin);
 
 		GLSL_SetUniformFloat(sp, UNIFORM_VERTEXLERP, glState.vertexAttribsInterpolation);
+
+		// every lightall program but the light vector's has the count, 0
+		// for one that doesn't take them here (the depth prepass among them)
+		{
+			int numDlights = stageDlights && pStage->dlightTo != DLIGHTTO_NONE ? numStageDlights : 0;
+
+			GLSL_SetUniformInt(sp, UNIFORM_NUMDLIGHTS, numDlights);
+			if (numDlights)
+			{
+				// a lightmap's stage scales them as its lightmap; a vertex
+				// color's is the light they join
+				qboolean byLightmap = pStage->dlightTo == DLIGHTTO_LIGHTMAP || ( pStage->dlightTo == DLIGHTTO_LIGHTALL
+					&& ( pStage->glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK ) == LIGHTDEF_USE_LIGHTMAP );
+
+				GLSL_SetUniformVec4Dlights(sp, UNIFORM_DLIGHTS, byLightmap ? stageDlightInfo : stageDlightVertex, 2 * numDlights);
+				GLSL_SetUniformInt(sp, UNIFORM_DLIGHTTO, pStage->dlightTo);
+			}
+		}
 
 		if (glState.boneAnimation)
 		{
@@ -1659,6 +1782,7 @@ void RB_StageIteratorGeneric( void )
 {
 	shaderCommands_t *input;
 	unsigned int vertexAttribs = 0;
+	dlightPath_t dlit;
 
 	input = &tess;
 	
@@ -1730,7 +1854,7 @@ void RB_StageIteratorGeneric( void )
 	//
 	if (backEnd.depthFill)
 	{
-		RB_IterateStagesGeneric( input );
+		RB_IterateStagesGeneric( input, qfalse );
 
 		//
 		// reset polygon offset
@@ -1767,7 +1891,11 @@ void RB_StageIteratorGeneric( void )
 	//
 	// call shader function
 	//
-	RB_IterateStagesGeneric( input );
+	dlit = tess.dlightBits && r_lightmap->integer == 0 ? tess.shader->dlightPath : DLIGHT_NONE;
+	if ( dlit == DLIGHT_STAGE ) {
+		SetStageDlights();
+	}
+	RB_IterateStagesGeneric( input, dlit == DLIGHT_STAGE );
 
 	//
 	// pshadows!
@@ -1781,17 +1909,10 @@ void RB_StageIteratorGeneric( void )
 	// 
 	// now do any dynamic lighting needed
 	//
-	if ( tess.dlightBits && tess.shader->sort <= SS_OPAQUE && r_lightmap->integer == 0
-		&& !(tess.shader->surfaceFlags & (SURF_NODLIGHT | SURF_SKY) ) ) {
-		if (tess.shader->numUnfoggedPasses == 1 && tess.xstages[0]->glslShaderGroup == tr.lightallShader
-			&& (tess.xstages[0]->glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK) && r_dlightMode->integer)
-		{
-			ForwardDlight();
-		}
-		else
-		{
-			ProjectDlightTexture();
-		}
+	if ( dlit == DLIGHT_FORWARD ) {
+		ForwardDlight();
+	} else if ( dlit == DLIGHT_PROJECTED ) {
+		ProjectDlightTexture();
 	}
 
 	//
