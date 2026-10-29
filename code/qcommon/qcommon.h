@@ -1513,9 +1513,12 @@ extern	int		time_backend;		// renderer backend time
 extern	int		time_late;			// the frame's start after it was due
 extern	int		time_inputAge;		// the newest input's age as the usercmd is built
 extern	int		time_swap;			// since the last frame's swap
-// when the last swap ended, after the renderer's wait for the GPU, in
-// Sys_Nanoseconds (frames synced to the display's blanks time it)
+// when the last swap ended, after the renderer's wait for the GPU, and
+// when the last frame's drawing ended, before its swap, where the renderer
+// says (ri.FrameDrawn), in Sys_Nanoseconds: frames synced to the display's
+// blanks are timed to the second, or failing it the first
 extern	int64_t	com_frameSwapTime;
+extern	int64_t	com_frameDrawnTime;
 
 extern	int		com_frameTime;
 
@@ -1809,7 +1812,7 @@ qboolean	Com_HoldDropsVsync( int maxfps, int64_t refresh, qboolean movesByFrame 
 #define	COM_SYNC_WAKES			64			// vblank wakes Com_VBlankFit takes
 
 typedef struct {
-	int64_t	costs[COM_SYNC_COSTS];	// from a frame's start to its swap's end
+	int64_t	costs[COM_SYNC_COSTS];	// from a frame's start to its drawing's end
 	int		numCosts, nextCost;
 	int64_t	margin;
 	int64_t	target;		// the blank the frame under way shows on, 0 for none

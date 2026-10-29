@@ -174,9 +174,10 @@ void Com_SyncReset( comFrameSync_t *sync ) {
 =================
 Com_SyncCost
 
-How long a frame takes, from its start to the end of its swap, as the
-engine plans for it: the 95th percentile of the last COM_SYNC_COSTS
-frames', at most a refresh. Half a refresh until 8 frames have been timed
+How long a frame takes, from its start to the end of its drawing, before
+its swap (ri.FrameDrawn), as the engine plans for it: the 95th percentile
+of the last COM_SYNC_COSTS frames', at most a refresh. Half a refresh
+until 8 frames have been timed
 =================
 */
 int64_t Com_SyncCost( const comFrameSync_t *sync, int64_t period ) {
@@ -197,27 +198,40 @@ Com_SyncNextStart
 When the next frame starts: as late as it can and still be ready for the
 blank it aims for, by its cost and the margin. It aims for the first blank
 after now, and after the one the frame before shows on, by half a refresh,
-so two frames never aim for one. A start before now is at once
+so two frames never aim for one. A start before now is at once.
+
+It never starts before the frame before has shown, though. Until that
+frame's flip, the GPU can't draw the next into the buffer it frees (a
+flip-model swap chain with two buffers, as NVIDIA's OpenGL on Windows
+gives), so a frame that started earlier waits there, and that wait would
+count in its cost: a cost of about a refresh, which starts the next frame
+earlier still. Measured on Joe's PC (2026-10-29), frames sat in that loop
+for 15 to 25 seconds at a time, each started a refresh early, and came out
+of it only as the margin shrank.
 =================
 */
 int64_t Com_SyncNextStart( comFrameSync_t *sync, int64_t now, int64_t vblank, int64_t period ) {
-	int64_t	after = now;
+	int64_t	after = now, shown = sync->target, start;
 
-	if ( sync->target ) {
-		after = MAX( after, sync->target + period / 2 );
+	if ( shown ) {
+		after = MAX( after, shown + period / 2 );
 	}
 	sync->target = Com_SyncBlankAfter( vblank, period, after );
 
-	return sync->target - Com_SyncCost( sync, period ) - sync->margin;
+	start = sync->target - Com_SyncCost( sync, period ) - sync->margin;
+	if ( shown ) {
+		start = MAX( start, shown );
+	}
+	return start;
 }
 
 /*
 =================
 Com_SyncFrameDone
 
-As a synced frame's swap ends (done; the renderer waits for the GPU to
-finish the frame then), its cost is kept, and whether it was in time for its
-blank sets the margin. One that missed it shows on the next: the margin
+As a synced frame is done (when its drawing ended, before its swap:
+ri.FrameDrawn), its cost is kept, and whether it was in time for its blank
+sets the margin. One that missed it shows on the next: the margin
 grows by COM_SYNC_MARGIN_STEP, up to half a refresh, and the next frame aims
 past that blank. One in time shrinks the margin's part above
 COM_SYNC_MARGIN_MIN, over COM_SYNC_MARGIN_DECAY, so that one miss holds it

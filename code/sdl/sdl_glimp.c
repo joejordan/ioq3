@@ -1779,6 +1779,28 @@ static void GLimp_SetSwapInterval( void )
 	ri.Cvar_Set( "r_swapIntervalActive", va( "%d", swapInterval ) );
 }
 
+#ifndef __EMSCRIPTEN__
+/*
+===============
+GLimp_FinishFence
+
+Waits for a fence, if wait, for 100 ms at most, and deletes it
+===============
+*/
+static void GLimp_FinishFence( GLsync *fence, qboolean wait )
+{
+	if( *fence )
+	{
+		if( wait )
+		{
+			qglClientWaitSync( *fence, GL_SYNC_FLUSH_COMMANDS_BIT, 100 * 1000000 );
+		}
+		qglDeleteSync( *fence );
+		*fence = NULL;
+	}
+}
+#endif
+
 /*
 ===============
 GLimp_EndFrame
@@ -1788,6 +1810,31 @@ Responsible for doing a swapbuffers
 */
 void GLimp_EndFrame( void )
 {
+	// A frame started just before the display's blank (com_frameSync 2)
+	// waits for its drawing to end before its swap, and the engine times
+	// it to then (ri.FrameDrawn), so it learns how long frames take, and
+	// whether this one was in time. Timed after the swap, the frame would
+	// take in the wait for the blank, where the swap waits for it, or
+	// where the driver waits on the GPU, as NVIDIA's OpenGL on Windows does
+	// before a fence after the swap: measured on Joe's PC (2026-10-29), the
+	// frames then started a refresh early to make room for it. Without
+	// fences (r_gpuSync 0, or none), it's timed as the CPU is done with it.
+	qboolean waited = qfalse;
+
+#ifndef __EMSCRIPTEN__
+	if( com_frameSync->integer == 2 )
+	{
+		if( r_gpuSync->integer && qglFenceSync )
+		{
+			GLsync drawnFence = qglFenceSync( GL_SYNC_GPU_COMMANDS_COMPLETE, 0 );
+
+			GLimp_FinishFence( &drawnFence, qtrue );
+			waited = qtrue;
+		}
+		ri.FrameDrawn( );
+	}
+#endif
+
 	// don't flip if drawing to front buffer
 	if ( Q_stricmp( r_drawBuffer->string, "GL_FRONT" ) != 0 )
 	{
@@ -1805,15 +1852,7 @@ void GLimp_EndFrame( void )
 	// whenever the GPU takes longer than one, and halve the frame rate.
 	// Without fences, there, reading a pixel waits for the frame.
 #ifndef __EMSCRIPTEN__
-	if( frameFence )
-	{
-		if( r_gpuSync->integer )
-		{
-			qglClientWaitSync( frameFence, GL_SYNC_FLUSH_COMMANDS_BIT, 100 * 1000000 );
-		}
-		qglDeleteSync( frameFence );
-		frameFence = NULL;
-	}
+	GLimp_FinishFence( &frameFence, r_gpuSync->integer );
 #else
 	// one not looked at belongs to a frame drawn without asking
 	if( previousFrameFence )
@@ -1836,20 +1875,10 @@ void GLimp_EndFrame( void )
 		GLimp_SetSwapInterval( );
 	}
 
-	if( r_gpuSync->integer && qglFenceSync )
+	// a frame waited for already needs no fence for the next
+	if( r_gpuSync->integer && qglFenceSync && !waited )
 	{
 		frameFence = qglFenceSync( GL_SYNC_GPU_COMMANDS_COMPLETE, 0 );
-
-#ifndef __EMSCRIPTEN__
-		// A frame started just before the display's blank waits for its
-		// own drawing too, so the engine learns when frames are ready for
-		// the display, and whether this one was in time: the CPU has
-		// nothing else to do until the next frame's start.
-		if( frameFence && com_frameSync->integer == 2 )
-		{
-			qglClientWaitSync( frameFence, GL_SYNC_FLUSH_COMMANDS_BIT, 100 * 1000000 );
-		}
-#endif
 	}
 #ifdef __EMSCRIPTEN__
 	else if( r_gpuSync->integer && !qglFenceSync )

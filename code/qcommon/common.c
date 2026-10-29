@@ -142,6 +142,7 @@ int		time_late;			// the frame's start after it was due
 int		time_inputAge;		// the newest input's age as the usercmd is built
 int		time_swap;			// since the last frame's swap
 int64_t	com_frameSwapTime;
+int64_t	com_frameDrawnTime;
 
 int			com_frameTime;
 int			com_frameNumber;
@@ -4943,6 +4944,24 @@ static void Com_ClientFrameStarted( int64_t frameStart ) {
 
 /*
 =================
+Com_FrameDone
+
+When the client frame that started at frameStart was done: the end of its
+drawing, where the renderer said (ri.FrameDrawn), or the end of its swap; 0
+if it swapped no frame
+=================
+*/
+static int64_t Com_FrameDone( int64_t frameStart ) {
+	if(com_frameDrawnTime > frameStart)
+		return com_frameDrawnTime;
+	if(com_frameSwapTime > frameStart)
+		return com_frameSwapTime;
+
+	return 0;
+}
+
+/*
+=================
 Com_ClientFrameEnded
 
 As a client frame ends, frames start just before the display's next blank
@@ -4962,7 +4981,7 @@ static void Com_ClientFrameEnded( int64_t frameStart ) {
 	qboolean	displayPaced = qfalse, held = qfalse;
 	int			swapInterval;
 	int			mode;
-	int64_t		vblank, period;
+	int64_t		vblank, period, done = Com_FrameDone(frameStart);
 
 #ifndef __EMSCRIPTEN__
 	// the display's refresh is read only where com_maxfps follows it
@@ -4982,10 +5001,10 @@ static void Com_ClientFrameEnded( int64_t frameStart ) {
 	if(displayPaced && Com_VBlankClock(&vblank, &period))
 	{
 		// a frame that was synced, and swapped
-		if(com_syncStart && com_frameSwapTime > frameStart)
+		if(com_syncStart && done)
 		{
-			time_syncSlack = (int)((com_sync.target - com_frameSwapTime) / 1000);
-			Com_SyncFrameDone(&com_sync, frameStart, com_frameSwapTime, vblank, period);
+			time_syncSlack = (int)((com_sync.target - done) / 1000);
+			Com_SyncFrameDone(&com_sync, frameStart, done, vblank, period);
 			time_syncMargin = (int)(com_sync.margin / 1000);
 		}
 		else if(!com_syncStart)
@@ -5342,6 +5361,9 @@ void Com_Frame( void ) {
 		int			all, sv, ev, cl;
 		char		sync[32] = "none";
 		int			frameSwap = -1;
+#ifndef DEDICATED
+		int64_t		done = Com_FrameDone( frameStart );
+#endif
 
 		all = timeAfter - timeBeforeServer;
 		sv = timeBeforeEvents - timeBeforeServer;
@@ -5351,8 +5373,9 @@ void Com_Frame( void ) {
 		cl -= time_frontend + time_backend;
 
 		// and its pacing, in microseconds (-1 for none): from its start,
-		// where it takes input, to the end of its swap (fs); for a frame
-		// started just before the display's blank, its swap's end before
+		// where it takes input, to the end of its swap (fs; for a frame
+		// started just before the display's blank, the end of its drawing,
+		// before the swap), and for such a frame, that end before
 		// that blank, negative if it missed it, and the margin it leaves
 		// the next (vb, none otherwise); how late it started, the newest
 		// input's age as the usercmd was built, the time since the last
@@ -5362,8 +5385,8 @@ void Com_Frame( void ) {
 		if ( time_syncMargin >= 0 ) {
 			Com_sprintf( sync, sizeof( sync ), "%i/%i", time_syncSlack, time_syncMargin );
 		}
-		if ( com_frameSwapTime > frameStart ) {
-			frameSwap = (int)( ( com_frameSwapTime - frameStart ) / 1000 );
+		if ( done ) {
+			frameSwap = (int)( ( done - frameStart ) / 1000 );
 		}
 #endif
 		Com_Printf ("frame:%i all:%3i sv:%3i ev:%3i cl:%3i gm:%3i rf:%3i bk:%3i fs:%i vb:%s late:%i in:%i sw:%i ms:%i dt:%i\n",
