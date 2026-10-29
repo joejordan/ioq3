@@ -583,7 +583,7 @@ static int GLSL_InitGPUShader2(shaderProgram_t * program, const char *name, int 
 	if (!(GLSL_CompileGPUShader(program->program, &program->vertexShader, vpCode, strlen(vpCode), GL_VERTEX_SHADER)))
 	{
 		ri.Printf(optionalProgram ? PRINT_DEVELOPER : PRINT_ALL, "GLSL_InitGPUShader2: Unable to load \"%s\" as GL_VERTEX_SHADER\n", name);
-		qglDeleteProgram(program->program);
+		GLSL_DeleteGPUShader(program);
 		return 0;
 	}
 
@@ -592,7 +592,7 @@ static int GLSL_InitGPUShader2(shaderProgram_t * program, const char *name, int 
 		if(!(GLSL_CompileGPUShader(program->program, &program->fragmentShader, fpCode, strlen(fpCode), GL_FRAGMENT_SHADER)))
 		{
 			ri.Printf(optionalProgram ? PRINT_DEVELOPER : PRINT_ALL, "GLSL_InitGPUShader2: Unable to load \"%s\" as GL_FRAGMENT_SHADER\n", name);
-			qglDeleteProgram(program->program);
+			GLSL_DeleteGPUShader(program);
 			return 0;
 		}
 	}
@@ -1139,7 +1139,7 @@ void GLSL_InitGPUShaders(void)
 
 		if (i & GENERICDEF_USE_DLIGHT)
 			Q_strcat(extradefines, 1024, va("#define USE_DLIGHT\n#define MAX_GENERIC_DLIGHTS %d\n#define DLIGHT_VERTEX_SCALE %f\n",
-				MAX_GENERIC_DLIGHTS, tr.identityLight));
+				MAX_GENERIC_DLIGHTS, tr.frameLight));
 
 		if (!GLSL_InitOptionalGPUShader(&tr.genericShader[i], "generic", attribs, extradefines,
 			fallbackShader_generic_vp, fallbackShader_generic_fp, (i & GENERICDEF_USE_DLIGHT) != 0))
@@ -1328,7 +1328,7 @@ void GLSL_InitGPUShaders(void)
 		// lightmap's, the vertexes', or an unlit stage's vertex color
 		if (i & LIGHTDEF_USE_DLIGHTS)
 			Q_strcat(extradefines, 1024, va("#define USE_DLIGHTS\n#define MAX_GENERIC_DLIGHTS %d\n#define DLIGHT_VERTEX_SCALE %f\n",
-				MAX_GENERIC_DLIGHTS, tr.identityLight));
+				MAX_GENERIC_DLIGHTS, tr.frameLight));
 
 		if (lightType)
 		{

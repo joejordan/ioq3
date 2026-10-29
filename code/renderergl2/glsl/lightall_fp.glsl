@@ -245,7 +245,7 @@ float CalcLightAttenuation(float point, float normDist)
 // the dlights join the light arriving, in its units: a lightmap's, which
 // the stage's color scales, or the vertexes' (or a vertex color's), which
 // the color is, so they're added beside it, scaled as rgbGen vertex scales
-// that light (tr.identityLight)
+// that light (tr.frameLight, ComputeShaderColors)
   #if defined(USE_LIGHTMAP)
 	#define DLIGHT_SCALE var_Color.rgb
   #else
