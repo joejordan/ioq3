@@ -58,6 +58,8 @@ cvar_t *r_sdlDriver;
 cvar_t *r_preferOpenGLES;
 cvar_t *r_gpuSync;
 cvar_t *r_modeFullscreen;
+// the engine's: 2 while frames start just before the display's blank
+static cvar_t *com_frameSync;
 
 // a new r_mode for the window, which waits while it's fullscreen
 static qboolean windowSizePending;
@@ -1547,6 +1549,7 @@ void GLimp_Init( qboolean fixedFunction )
 	r_centerWindow = ri.Cvar_Get( "r_centerWindow", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_preferOpenGLES = ri.Cvar_Get( "r_preferOpenGLES", "-1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_gpuSync = ri.Cvar_Get( "r_gpuSync", "1", CVAR_ARCHIVE );
+	com_frameSync = ri.Cvar_Get( "com_frameSync", "0", CVAR_ROM );
 	ri.Cvar_SetDescription( r_gpuSync, "Wait after each swap for the GPU to finish the frame before, so that no more than one frame is queued and frames "
 		"show as soon after they're drawn as they can. Needs OpenGL 3.2, or GL_ARB_sync." );
 	ri.Cvar_SetDescription( ri.Cvar_Get( "r_swapIntervalActive", "0", CVAR_ROM ),
@@ -1808,6 +1811,17 @@ void GLimp_EndFrame( void )
 	if( r_gpuSync->integer && qglFenceSync )
 	{
 		frameFence = qglFenceSync( GL_SYNC_GPU_COMMANDS_COMPLETE, 0 );
+
+#ifndef __EMSCRIPTEN__
+		// A frame started just before the display's blank waits for its
+		// own drawing too, so the engine learns when frames are ready for
+		// the display, and whether this one was in time: the CPU has
+		// nothing else to do until the next frame's start.
+		if( frameFence && com_frameSync->integer == 2 )
+		{
+			qglClientWaitSync( frameFence, GL_SYNC_FLUSH_COMMANDS_BIT, 100 * 1000000 );
+		}
+#endif
 	}
 #ifdef __EMSCRIPTEN__
 	else if( r_gpuSync->integer && !qglFenceSync )
