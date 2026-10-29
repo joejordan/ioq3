@@ -1371,6 +1371,13 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input, qboolean stageDlig
 				index = LIGHTDEF_USE_TCGEN_AND_TCMOD;
 			}
 
+			// the variant with the dlights only where they light this surface,
+			// so one with none near runs the program it always did
+			if (stageDlights && pStage->dlightTo != DLIGHTTO_NONE)
+			{
+				index |= LIGHTDEF_USE_DLIGHTS;
+			}
+
 			sp = &pStage->glslShaderGroup[index];
 
 			backEnd.pc.c_lightallDraws++;
@@ -1390,22 +1397,18 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input, qboolean stageDlig
 
 		GLSL_SetUniformFloat(sp, UNIFORM_VERTEXLERP, glState.vertexAttribsInterpolation);
 
-		// every lightall program but the light vector's has the count, 0
-		// for one that doesn't take them here (the depth prepass among them)
+		// the surface's dlights for a stage that takes them (its program's
+		// dlight variant, chosen above)
+		if (stageDlights && pStage->dlightTo != DLIGHTTO_NONE)
 		{
-			int numDlights = stageDlights && pStage->dlightTo != DLIGHTTO_NONE ? numStageDlights : 0;
+			// a lightmap's stage scales them as its lightmap; a vertex
+			// color's is the light they join
+			qboolean byLightmap = pStage->dlightTo == DLIGHTTO_LIGHTMAP || ( pStage->dlightTo == DLIGHTTO_LIGHTALL
+				&& ( pStage->glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK ) == LIGHTDEF_USE_LIGHTMAP );
 
-			GLSL_SetUniformInt(sp, UNIFORM_NUMDLIGHTS, numDlights);
-			if (numDlights)
-			{
-				// a lightmap's stage scales them as its lightmap; a vertex
-				// color's is the light they join
-				qboolean byLightmap = pStage->dlightTo == DLIGHTTO_LIGHTMAP || ( pStage->dlightTo == DLIGHTTO_LIGHTALL
-					&& ( pStage->glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK ) == LIGHTDEF_USE_LIGHTMAP );
-
-				GLSL_SetUniformVec4Dlights(sp, UNIFORM_DLIGHTS, byLightmap ? stageDlightInfo : stageDlightVertex, 2 * numDlights);
-				GLSL_SetUniformInt(sp, UNIFORM_DLIGHTTO, pStage->dlightTo);
-			}
+			GLSL_SetUniformInt(sp, UNIFORM_NUMDLIGHTS, numStageDlights);
+			GLSL_SetUniformVec4Dlights(sp, UNIFORM_DLIGHTS, byLightmap ? stageDlightInfo : stageDlightVertex, 2 * numStageDlights);
+			GLSL_SetUniformInt(sp, UNIFORM_DLIGHTTO, pStage->dlightTo);
 		}
 
 		if (glState.boneAnimation)

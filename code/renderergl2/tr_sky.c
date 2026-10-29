@@ -478,10 +478,6 @@ static void DrawSkySide( struct image_s *image, const int mins[2], const int max
 		GLSL_SetUniformVec4(sp, UNIFORM_DIFFUSETEXMATRIX7, st[1]);
 
 		GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, 0);
-
-		// compiled with USE_DLIGHTS where r_dlightMode is on: a stage that
-		// took the dlights last left its count in the program
-		GLSL_SetUniformInt(sp, UNIFORM_NUMDLIGHTS, 0);
 	}
 
 	R_DrawElements(tess.numIndexes - tess.firstIndex, tess.firstIndex);

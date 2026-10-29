@@ -2074,6 +2074,9 @@ static void ComputeDlightPath( void )
 		shaderStage_t *pStage = &stages[i];
 		int src = pStage->stateBits & GLS_SRCBLEND_BITS, dst = pStage->stateBits & GLS_DSTBLEND_BITS;
 		int lightType = pStage->glslShaderGroup == tr.lightallShader ? pStage->glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK : 0;
+		// a stage that multiplies the frame, which already holds the dlights
+		// once a stage before it took them: taking them again would square them
+		qboolean again = takers && ( src == GLS_SRCBLEND_DST_COLOR || dst == GLS_DSTBLEND_SRC_COLOR );
 
 		if ( i > 0 && ( lightType || dst != GLS_DSTBLEND_ONE || ( src != GLS_SRCBLEND_ONE && src != GLS_SRCBLEND_SRC_ALPHA ) ) ) {
 			forward = 0;
@@ -2081,15 +2084,17 @@ static void ComputeDlightPath( void )
 		if ( pStage->adjustColorsForFog || lightType == LIGHTDEF_USE_LIGHT_VECTOR ) {
 			blocked = 1;
 		} else if ( lightType ) {
-			pStage->dlightTo = DLIGHTTO_LIGHTALL;
-			takers++;
+			if ( !again ) {
+				pStage->dlightTo = DLIGHTTO_LIGHTALL;
+				takers++;
+			}
 		} else if ( pStage->glslShaderGroup == tr.lightallShader ) {
 			// unlit, its color the vertexes' light (a map model's): that's
 			// the light arriving, in a stage that's opaque or multiplies
 			if ( ( pStage->rgbGen == CGEN_VERTEX || pStage->rgbGen == CGEN_EXACT_VERTEX
 				|| pStage->rgbGen == CGEN_VERTEX_LIT || pStage->rgbGen == CGEN_EXACT_VERTEX_LIT )
 				&& ( !( src || dst ) || ( src == GLS_SRCBLEND_ONE && dst == GLS_DSTBLEND_ZERO )
-				|| src == GLS_SRCBLEND_DST_COLOR || dst == GLS_DSTBLEND_SRC_COLOR ) ) {
+				|| src == GLS_SRCBLEND_DST_COLOR || dst == GLS_DSTBLEND_SRC_COLOR ) && !again ) {
 				pStage->dlightTo = DLIGHTTO_LIGHTALL;
 				takers++;
 			}
@@ -2121,16 +2126,18 @@ static void ComputeDlightPath( void )
 		}
 	}
 
-	if ( !r_dlightMode->integer || blocked ) {
+	// no stage dlights where the GPU can't hold their programs, or with
+	// r_dlightStages 0 (GLSL_StageDlightsFit): the projected dlight, as stock
+	if ( !r_dlightMode->integer || blocked || !tr.stageDlights ) {
 		forward = forward && r_dlightMode->integer && stages[0].glslShaderGroup == tr.lightallShader
 			&& ( stages[0].glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK );
 		takers = 0;
 	} else {
 		forward = forward && stages[0].glslShaderGroup == tr.lightallShader
 			&& ( stages[0].glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK );
-		// the lightmap's own stage, or the vertex color's where nothing
+		// the lightmap's own stage, or the vertex color's, where nothing
 		// else takes the light
-		if ( lightmap >= 0 ) {
+		if ( lightmap >= 0 && !takers ) {
 			stages[lightmap].dlightTo = DLIGHTTO_LIGHTMAP;
 			takers++;
 		} else if ( color >= 0 && !takers ) {

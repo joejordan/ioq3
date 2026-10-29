@@ -147,6 +147,7 @@ cvar_t  *r_baseGloss;
 cvar_t  *r_glossType;
 cvar_t  *r_mergeLightmaps;
 cvar_t  *r_dlightMode;
+cvar_t  *r_dlightStages;
 cvar_t  *r_pshadowDist;
 cvar_t  *r_imageUpsample;
 cvar_t  *r_imageUpsampleMaxSize;
@@ -1405,6 +1406,9 @@ void R_Register( void )
 	r_glossType = ri.Cvar_Get("r_glossType", "1", CVAR_ARCHIVE | CVAR_LATCH);
 	// dynamic lights shaded per pixel where a surface allows it
 	r_dlightMode = ri.Cvar_Get( "r_dlightMode", "1", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	r_dlightStages = ri.Cvar_Get( "r_dlightStages", "1", CVAR_CHEAT | CVAR_LATCH );
+	ri.Cvar_SetDescription( r_dlightStages, "0 lights every surface ForwardDlight doesn't with the projected dlight, "
+		"as on a GPU that can't hold the stages' dlights; for testing that fallback" );
 	r_pshadowDist = ri.Cvar_Get( "r_pshadowDist", "128", CVAR_ARCHIVE );
 	r_mergeLightmaps = ri.Cvar_Get( "r_mergeLightmaps", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_imageUpsample = ri.Cvar_Get( "r_imageUpsample", "0", CVAR_ARCHIVE | CVAR_LATCH );

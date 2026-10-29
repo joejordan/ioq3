@@ -597,8 +597,9 @@ enum
 	LIGHTDEF_USE_PARALLAXMAP     = 0x0010,
 	LIGHTDEF_USE_SHADOWMAP       = 0x0020,
 	LIGHTDEF_ENTITY_BONE_ANIMATION = 0x0040,
-	LIGHTDEF_ALL                 = 0x007F,
-	LIGHTDEF_COUNT               = 0x0080
+	LIGHTDEF_USE_DLIGHTS         = 0x0080,	// the surface's dlights join the stage's light
+	LIGHTDEF_ALL                 = 0x00FF,
+	LIGHTDEF_COUNT               = 0x0100
 };
 
 enum
@@ -1569,6 +1570,7 @@ typedef struct {
 	int						frameSceneNum;	// zeroed at RE_BeginFrame
 
 	qboolean				worldMapLoaded;
+	qboolean				stageDlights;	// the dlights' programs for the stages compiled (DLIGHT_STAGE)
 	qboolean				worldDeluxeMapping;
 	vec2_t                  autoExposureMinMax;
 	vec3_t                  toneMinAvgMaxLevel;
@@ -1886,6 +1888,7 @@ extern  cvar_t  *r_baseSpecular;
 extern  cvar_t  *r_baseGloss;
 extern  cvar_t  *r_glossType;
 extern  cvar_t  *r_dlightMode;
+extern  cvar_t  *r_dlightStages;
 extern  cvar_t  *r_pshadowDist;
 extern  cvar_t  *r_mergeLightmaps;
 extern  cvar_t  *r_imageUpsample;
