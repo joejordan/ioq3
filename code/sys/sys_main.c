@@ -1398,8 +1398,9 @@ static SDL_Window *Sys_GameWindow( void )
 =================
 Sys_VBlankClock
 
-On Windows, from a thread that waits for each blank of the display the
-window is on (win_vblank.c), fitted to a grid (Com_VBlankFit). None yet
+The blanks of the display the window is on, fitted to a grid
+(Com_VBlankFit): on Windows from a thread that waits for each
+(win_vblank.c), on macOS from a display link (mac_vblank.m). None yet
 elsewhere
 =================
 */
@@ -1409,12 +1410,17 @@ qboolean Sys_VBlankClock( int64_t *vblank, int64_t *period )
 	SDL_Window *window = Sys_GameWindow( );
 	int64_t wakes[ COM_SYNC_WAKES ];
 	int count;
+#ifdef SDL_PLATFORM_WINDOWS
+	const char *native = SDL_PROP_WINDOW_WIN32_HWND_POINTER;
+#else
+	const char *native = SDL_PROP_WINDOW_COCOA_WINDOW_POINTER;
+#endif
 
 	if( !window )
 	{
 		return qfalse;
 	}
-	count = Sys_VBlankWakes( SDL_GetPointerProperty( SDL_GetWindowProperties( window ), SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL ), wakes );
+	count = Sys_VBlankWakes( SDL_GetPointerProperty( SDL_GetWindowProperties( window ), native, NULL ), wakes );
 
 	return Com_VBlankFit( wakes, count, Sys_Nanoseconds( ), vblank, period );
 #else
